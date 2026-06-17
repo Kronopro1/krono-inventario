@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { supabase } from "@/src/lib/supabase"
 
 type Canal = {
@@ -35,6 +35,126 @@ type Inventario = {
   stock_actual: number
 }
 
+type VentaItem = {
+  productoId: string
+  cantidad: number
+}
+
+function ProductoBuscador({
+  index,
+  item,
+  productos,
+  obtenerStock,
+  obtenerProducto,
+  actualizarItem,
+}: {
+  index: number
+  item: VentaItem
+  productos: Producto[]
+  obtenerStock: (sku: string) => number | null
+  obtenerProducto: (productoId: string) => Producto | undefined
+  actualizarItem: (
+    index: number,
+    field: "productoId" | "cantidad",
+    value: string | number
+  ) => void
+}) {
+  const [busqueda, setBusqueda] = useState("")
+  const [abierto, setAbierto] = useState(false)
+
+  const productoSeleccionado = obtenerProducto(item.productoId)
+  const stock = productoSeleccionado
+    ? obtenerStock(productoSeleccionado.sku)
+    : null
+
+  const productosFiltrados = useMemo(() => {
+    const textoBusqueda = busqueda.trim().toLowerCase()
+
+    if (!textoBusqueda) return productos.slice(0, 10)
+
+    return productos
+      .filter((producto) => {
+        const texto = `${producto.sku} ${producto.nombre}`.toLowerCase()
+        return texto.includes(textoBusqueda)
+      })
+      .slice(0, 10)
+  }, [busqueda, productos])
+
+  return (
+    <div>
+      <label className="text-xs font-medium text-slate-500">
+        Producto o combo
+      </label>
+
+      <input
+        type="text"
+        className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
+        placeholder="Buscar por SKU o nombre..."
+        value={
+          abierto
+            ? busqueda
+            : productoSeleccionado
+              ? `${productoSeleccionado.sku} - ${productoSeleccionado.nombre}`
+              : busqueda
+        }
+        onFocus={() => setAbierto(true)}
+        onChange={(e) => {
+          setBusqueda(e.target.value)
+          setAbierto(true)
+          actualizarItem(index, "productoId", "")
+        }}
+      />
+
+      {abierto && (
+        <div className="mt-2 max-h-64 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {productosFiltrados.map((producto) => {
+            const productoStock = obtenerStock(producto.sku)
+
+            return (
+              <button
+                key={producto.id}
+                type="button"
+                onClick={() => {
+                  actualizarItem(index, "productoId", producto.id)
+                  setBusqueda("")
+                  setAbierto(false)
+                }}
+                className="block w-full border-b border-slate-100 px-4 py-3 text-left text-sm hover:bg-slate-50"
+              >
+                <div className="font-semibold text-slate-900">
+                  {producto.sku} - {producto.nombre}
+                  {producto.es_combo ? " (Combo)" : ""}
+                </div>
+
+                <div className="mt-1 text-xs text-slate-500">
+                  Stock: {productoStock ?? 0}
+                </div>
+              </button>
+            )
+          })}
+
+          {productosFiltrados.length === 0 && (
+            <div className="px-4 py-3 text-sm text-slate-500">
+              No se encontraron productos.
+            </div>
+          )}
+        </div>
+      )}
+
+      {productoSeleccionado && stock !== null && (
+        <p className="mt-2 text-xs text-slate-500">
+          Producto seleccionado:{" "}
+          <strong>
+            {productoSeleccionado.sku} - {productoSeleccionado.nombre}
+          </strong>
+          <br />
+          Stock disponible en almacén seleccionado: <strong>{stock}</strong>
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function VentasForm({
   canales,
   empresas,
@@ -54,7 +174,9 @@ export default function VentasForm({
   const [numeroOrden, setNumeroOrden] = useState("")
   const [loading, setLoading] = useState(false)
   const [mensaje, setMensaje] = useState("")
-  const [items, setItems] = useState([{ productoId: "", cantidad: 1 }])
+  const [items, setItems] = useState<VentaItem[]>([
+    { productoId: "", cantidad: 1 },
+  ])
 
   const almacenSeleccionado = almacenes.find((a) => a.id === almacenId)
   const canalSeleccionado = canales.find((c) => c.id === canalId)
@@ -253,7 +375,7 @@ export default function VentasForm({
               Productos vendidos
             </h2>
             <p className="text-sm text-slate-500">
-              Puedes registrar productos individuales o combos.
+              Busca por SKU, nombre de producto o combo.
             </p>
           </div>
 
@@ -267,82 +389,49 @@ export default function VentasForm({
         </div>
 
         <div className="mt-4 space-y-3">
-          {items.map((item, index) => {
-            const productoSeleccionado = obtenerProducto(item.productoId)
-            const stock = productoSeleccionado
-              ? obtenerStock(productoSeleccionado.sku)
-              : null
-
-            return (
-              <div
-                key={index}
-                className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6"
-              >
-                <div className="md:col-span-4">
-                  <label className="text-xs font-medium text-slate-500">
-                    Producto o combo
-                  </label>
-
-                  <select
-                    className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
-                    value={item.productoId}
-                    onChange={(e) =>
-                      actualizarItem(index, "productoId", e.target.value)
-                    }
-                  >
-                    <option value="">Seleccionar producto o combo</option>
-
-                    {productos.map((producto) => {
-                      const productoStock = obtenerStock(producto.sku)
-
-                      return (
-                        <option key={producto.id} value={producto.id}>
-                          {producto.sku} - {producto.nombre}
-                          {producto.es_combo ? " (Combo)" : ""}
-                          {productoStock !== null
-                            ? ` | Stock: ${productoStock}`
-                            : ""}
-                        </option>
-                      )
-                    })}
-                  </select>
-
-                  {productoSeleccionado && stock !== null && (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Stock disponible en almacén seleccionado:{" "}
-                      <strong>{stock}</strong>
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-slate-500">
-                    Cantidad
-                  </label>
-
-                  <input
-                    type="number"
-                    min="1"
-                    className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
-                    value={item.cantidad}
-                    onChange={(e) =>
-                      actualizarItem(index, "cantidad", Number(e.target.value))
-                    }
-                  />
-                </div>
-
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={() => eliminarItem(index)}
-                    className="w-full rounded-2xl bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
-                  >
-                    Eliminar
-                  </button>
-                </div>
+          {items.map((item, index) => (
+            <div
+              key={index}
+              className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6"
+            >
+              <div className="md:col-span-4">
+                <ProductoBuscador
+                  index={index}
+                  item={item}
+                  productos={productos}
+                  obtenerStock={obtenerStock}
+                  obtenerProducto={obtenerProducto}
+                  actualizarItem={actualizarItem}
+                />
               </div>
-            )
-          })}
+
+              <div>
+                <label className="text-xs font-medium text-slate-500">
+                  Cantidad
+                </label>
+
+                <input
+                  type="number"
+                  min="1"
+                  className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
+                  value={item.cantidad}
+                  onChange={(e) =>
+                    actualizarItem(index, "cantidad", Number(e.target.value))
+                  }
+                />
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={() => eliminarItem(index)}
+                  className="w-full rounded-2xl bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
