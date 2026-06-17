@@ -18,8 +18,16 @@ type Perfil = {
   activo: boolean
 }
 
+function rutaInicioPorRol(rol: Rol) {
+  if (rol === "operador") return "/inventario"
+  if (rol === "vendedor") return "/ventas"
+  if (rol === "consulta") return "/inventario"
+  return "/"
+}
+
 function rutaPermitida(pathname: string, rol: Rol) {
-  if (pathname === "/" || pathname === "/login") return true
+  if (pathname === "/login") return true
+
   if (rol === "admin") return true
 
   if (rol === "operador") {
@@ -28,17 +36,16 @@ function rutaPermitida(pathname: string, rol: Rol) {
       pathname.startsWith("/ingresos") ||
       pathname.startsWith("/traslados") ||
       pathname.startsWith("/ventas") ||
-      pathname.startsWith("/movimientos") ||
-      pathname.startsWith("/reportes")
+      pathname.startsWith("/movimientos")
     )
   }
 
   if (rol === "consulta") {
-    return pathname.startsWith("/inventario") || pathname.startsWith("/reportes")
+    return pathname === "/" || pathname.startsWith("/inventario") || pathname.startsWith("/reportes")
   }
 
   if (rol === "vendedor") {
-    return pathname.startsWith("/inventario") || pathname.startsWith("/ventas")
+    return pathname === "/" || pathname.startsWith("/inventario") || pathname.startsWith("/ventas")
   }
 
   return false
@@ -51,6 +58,7 @@ export default function AppShell({ children }: AppShellProps) {
   const [checking, setChecking] = useState(true)
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [accesoDenegado, setAccesoDenegado] = useState(false)
+  const [menuAbierto, setMenuAbierto] = useState(false)
 
   const isLoginPage = pathname === "/login"
 
@@ -95,6 +103,11 @@ export default function AppShell({ children }: AppShellProps) {
         const perfilUsuario = perfilData as Perfil
         setPerfil(perfilUsuario)
 
+        if (pathname === "/" && perfilUsuario.rol !== "admin") {
+          router.replace(rutaInicioPorRol(perfilUsuario.rol))
+          return
+        }
+
         if (!rutaPermitida(pathname, perfilUsuario.rol)) {
           setAccesoDenegado(true)
         }
@@ -118,6 +131,8 @@ export default function AppShell({ children }: AppShellProps) {
 
   const rol = perfil?.rol
 
+  const puedeVerGeneral = rol === "admin" || rol === "consulta" || rol === "vendedor"
+
   const puedeVerInventario =
     rol === "admin" ||
     rol === "operador" ||
@@ -125,17 +140,61 @@ export default function AppShell({ children }: AppShellProps) {
     rol === "vendedor"
 
   const puedeOperarInventario = rol === "admin" || rol === "operador"
+
   const puedeVender = rol === "admin" || rol === "operador" || rol === "vendedor"
+
   const puedeVerMovimientos = rol === "admin" || rol === "operador"
+
   const puedeVerConfiguracion = rol === "admin"
-  const puedeVerReportes = rol === "admin" || rol === "operador" || rol === "consulta"
+
+  const puedeVerReportes = rol === "admin" || rol === "consulta"
+
+  const cerrarMenuMovil = () => setMenuAbierto(false)
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <aside className="fixed left-0 top-0 h-screen w-72 overflow-y-auto border-r border-slate-800 bg-slate-950 px-5 py-6 text-white">
-        <div className="mb-8">
-          <div className="text-2xl font-bold tracking-tight">Krono</div>
-          <div className="text-sm text-slate-400">Inventory System</div>
+    <div className="min-h-screen bg-slate-50">
+      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+        <div>
+          <div className="text-lg font-bold text-slate-950">Krono</div>
+          <div className="text-xs text-slate-500">Inventory System</div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setMenuAbierto(!menuAbierto)}
+          className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+        >
+          {menuAbierto ? "Cerrar" : "Menú"}
+        </button>
+      </div>
+
+      {menuAbierto && (
+        <button
+          type="button"
+          onClick={cerrarMenuMovil}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          aria-label="Cerrar menú"
+        />
+      )}
+
+      <aside
+        className={`fixed left-0 top-0 z-50 h-screen w-72 overflow-y-auto border-r border-slate-800 bg-slate-950 px-5 py-6 text-white transition-transform duration-300 md:translate-x-0 ${
+          menuAbierto ? "translate-x-0" : "-translate-x-full"
+        } md:block`}
+      >
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <div className="text-2xl font-bold tracking-tight">Krono</div>
+            <div className="text-sm text-slate-400">Inventory System</div>
+          </div>
+
+          <button
+            type="button"
+            onClick={cerrarMenuMovil}
+            className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-semibold text-white md:hidden"
+          >
+            X
+          </button>
         </div>
 
         {perfil && (
@@ -149,18 +208,21 @@ export default function AppShell({ children }: AppShellProps) {
         )}
 
         <nav className="space-y-6 text-sm">
-          <div>
-            <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              General
-            </p>
+          {puedeVerGeneral && (
+            <div>
+              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                General
+              </p>
 
-            <Link
-              className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-              href="/"
-            >
-              Dashboard
-            </Link>
-          </div>
+              <Link
+                onClick={cerrarMenuMovil}
+                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
+                href="/"
+              >
+                Dashboard
+              </Link>
+            </div>
+          )}
 
           {puedeVerInventario && (
             <div>
@@ -169,6 +231,7 @@ export default function AppShell({ children }: AppShellProps) {
               </p>
 
               <Link
+                onClick={cerrarMenuMovil}
                 className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                 href="/inventario"
               >
@@ -178,6 +241,7 @@ export default function AppShell({ children }: AppShellProps) {
               {puedeOperarInventario && (
                 <>
                   <Link
+                    onClick={cerrarMenuMovil}
                     className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                     href="/ingresos"
                   >
@@ -185,6 +249,7 @@ export default function AppShell({ children }: AppShellProps) {
                   </Link>
 
                   <Link
+                    onClick={cerrarMenuMovil}
                     className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                     href="/traslados"
                   >
@@ -203,6 +268,7 @@ export default function AppShell({ children }: AppShellProps) {
 
               {puedeVender && (
                 <Link
+                  onClick={cerrarMenuMovil}
                   className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                   href="/ventas"
                 >
@@ -212,6 +278,7 @@ export default function AppShell({ children }: AppShellProps) {
 
               {puedeVerMovimientos && (
                 <Link
+                  onClick={cerrarMenuMovil}
                   className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                   href="/movimientos"
                 >
@@ -228,6 +295,7 @@ export default function AppShell({ children }: AppShellProps) {
               </p>
 
               <Link
+                onClick={cerrarMenuMovil}
                 className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                 href="/configuracion/usuarios"
               >
@@ -235,6 +303,7 @@ export default function AppShell({ children }: AppShellProps) {
               </Link>
 
               <Link
+                onClick={cerrarMenuMovil}
                 className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                 href="/configuracion/productos"
               >
@@ -242,6 +311,7 @@ export default function AppShell({ children }: AppShellProps) {
               </Link>
 
               <Link
+                onClick={cerrarMenuMovil}
                 className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                 href="/configuracion/combos"
               >
@@ -249,6 +319,7 @@ export default function AppShell({ children }: AppShellProps) {
               </Link>
 
               <Link
+                onClick={cerrarMenuMovil}
                 className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                 href="/configuracion/nuevo-producto"
               >
@@ -256,6 +327,7 @@ export default function AppShell({ children }: AppShellProps) {
               </Link>
 
               <Link
+                onClick={cerrarMenuMovil}
                 className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                 href="/configuracion/nuevo-combo"
               >
@@ -271,6 +343,7 @@ export default function AppShell({ children }: AppShellProps) {
               </p>
 
               <Link
+                onClick={cerrarMenuMovil}
                 className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
                 href="/reportes"
               >
@@ -291,8 +364,8 @@ export default function AppShell({ children }: AppShellProps) {
         </nav>
       </aside>
 
-      <main className="ml-72 min-h-screen flex-1">
-        <div className="mx-auto max-w-7xl px-8 py-8">
+      <main className="min-h-screen md:ml-72">
+        <div className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
           {accesoDenegado ? (
             <section className="flex min-h-[70vh] items-center justify-center">
               <div className="max-w-md rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm">
@@ -307,10 +380,10 @@ export default function AppShell({ children }: AppShellProps) {
                 </p>
 
                 <Link
-                  href="/"
+                  href={perfil ? rutaInicioPorRol(perfil.rol) : "/login"}
                   className="mt-6 inline-flex rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
                 >
-                  Volver al Dashboard
+                  Volver
                 </Link>
               </div>
             </section>
