@@ -18,6 +18,11 @@ type Perfil = {
   activo: boolean
 }
 
+type MenuLink = {
+  label: string
+  href: string
+}
+
 function rutaInicioPorRol(rol: Rol) {
   if (rol === "operador") return "/inventario"
   if (rol === "vendedor") return "/ventas"
@@ -41,14 +46,87 @@ function rutaPermitida(pathname: string, rol: Rol) {
   }
 
   if (rol === "consulta") {
-    return pathname === "/" || pathname.startsWith("/inventario") || pathname.startsWith("/reportes")
+    return (
+      pathname === "/" ||
+      pathname.startsWith("/inventario") ||
+      pathname.startsWith("/reportes")
+    )
   }
 
   if (rol === "vendedor") {
-    return pathname === "/" || pathname.startsWith("/inventario") || pathname.startsWith("/ventas")
+    return (
+      pathname === "/" ||
+      pathname.startsWith("/inventario") ||
+      pathname.startsWith("/ventas")
+    )
   }
 
   return false
+}
+
+function NavLink({
+  href,
+  label,
+  pathname,
+  onClick,
+}: {
+  href: string
+  label: string
+  pathname: string
+  onClick: () => void
+}) {
+  const activo =
+    href === "/"
+      ? pathname === "/"
+      : pathname === href || pathname.startsWith(`${href}/`)
+
+  return (
+    <Link
+      onClick={onClick}
+      href={href}
+      className={`block rounded-xl px-3 py-2 transition ${
+        activo
+          ? "bg-white font-semibold text-slate-950"
+          : "text-slate-200 hover:bg-slate-800"
+      }`}
+    >
+      {label}
+    </Link>
+  )
+}
+
+function MenuSection({
+  title,
+  links,
+  pathname,
+  onClick,
+}: {
+  title: string
+  links: MenuLink[]
+  pathname: string
+  onClick: () => void
+}) {
+  if (links.length === 0) return null
+
+  return (
+    <div>
+      <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+        {title}
+      </p>
+
+      <div className="space-y-1">
+        {links.map((link) => (
+          <NavLink
+            key={link.href}
+            href={link.href}
+            label={link.label}
+            pathname={pathname}
+            onClick={onClick}
+          />
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function AppShell({ children }: AppShellProps) {
@@ -131,7 +209,8 @@ export default function AppShell({ children }: AppShellProps) {
 
   const rol = perfil?.rol
 
-  const puedeVerGeneral = rol === "admin" || rol === "consulta" || rol === "vendedor"
+  const puedeVerGeneral =
+    rol === "admin" || rol === "consulta" || rol === "vendedor"
 
   const puedeVerInventario =
     rol === "admin" ||
@@ -141,7 +220,8 @@ export default function AppShell({ children }: AppShellProps) {
 
   const puedeOperarInventario = rol === "admin" || rol === "operador"
 
-  const puedeVender = rol === "admin" || rol === "operador" || rol === "vendedor"
+  const puedeVender =
+    rol === "admin" || rol === "operador" || rol === "vendedor"
 
   const puedeVerMovimientos = rol === "admin" || rol === "operador"
 
@@ -150,6 +230,55 @@ export default function AppShell({ children }: AppShellProps) {
   const puedeVerReportes = rol === "admin" || rol === "consulta"
 
   const cerrarMenuMovil = () => setMenuAbierto(false)
+
+  const linksGeneral: MenuLink[] = puedeVerGeneral
+    ? [{ label: "Dashboard", href: "/" }]
+    : []
+
+  const linksInventario: MenuLink[] = []
+
+  if (puedeVerInventario) {
+    linksInventario.push({ label: "Inventario", href: "/inventario" })
+  }
+
+  if (puedeOperarInventario) {
+    linksInventario.push(
+      { label: "Ingresos", href: "/ingresos" },
+      { label: "Traslados", href: "/traslados" }
+    )
+  }
+
+  const linksOperaciones: MenuLink[] = []
+
+  if (puedeVender) {
+    linksOperaciones.push(
+      { label: "Ventas Marketplace", href: "/ventas" },
+      { label: "Ventas importadas", href: "/ventas/importadas" }
+    )
+  }
+
+  if (puedeVerMovimientos) {
+    linksOperaciones.push({ label: "Movimientos", href: "/movimientos" })
+  }
+
+  const linksConfiguracion: MenuLink[] = puedeVerConfiguracion
+    ? [
+        { label: "Usuarios", href: "/configuracion/usuarios" },
+        { label: "Productos", href: "/configuracion/productos" },
+        { label: "Combos", href: "/configuracion/combos" },
+      ]
+    : []
+
+  const linksReportes: MenuLink[] = puedeVerReportes
+    ? [
+        { label: "Centro de reportes", href: "/reportes" },
+        { label: "Inventario", href: "/reportes/inventario" },
+        { label: "Ventas", href: "/reportes/ventas" },
+        { label: "Ranking", href: "/reportes/ranking" },
+        { label: "Alertas", href: "/reportes/alertas" },
+        { label: "Kardex", href: "/reportes/kardex" },
+      ]
+    : []
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -208,149 +337,40 @@ export default function AppShell({ children }: AppShellProps) {
         )}
 
         <nav className="space-y-6 text-sm">
-          {puedeVerGeneral && (
-            <div>
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                General
-              </p>
+          <MenuSection
+            title="General"
+            links={linksGeneral}
+            pathname={pathname}
+            onClick={cerrarMenuMovil}
+          />
 
-              <Link
-                onClick={cerrarMenuMovil}
-                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                href="/"
-              >
-                Dashboard
-              </Link>
-            </div>
-          )}
+          <MenuSection
+            title="Inventario"
+            links={linksInventario}
+            pathname={pathname}
+            onClick={cerrarMenuMovil}
+          />
 
-          {puedeVerInventario && (
-            <div>
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Inventario
-              </p>
+          <MenuSection
+            title="Operaciones"
+            links={linksOperaciones}
+            pathname={pathname}
+            onClick={cerrarMenuMovil}
+          />
 
-              <Link
-                onClick={cerrarMenuMovil}
-                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                href="/inventario"
-              >
-                Inventario
-              </Link>
+          <MenuSection
+            title="Configuración"
+            links={linksConfiguracion}
+            pathname={pathname}
+            onClick={cerrarMenuMovil}
+          />
 
-              {puedeOperarInventario && (
-                <>
-                  <Link
-                    onClick={cerrarMenuMovil}
-                    className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                    href="/ingresos"
-                  >
-                    Ingresos
-                  </Link>
-
-                  <Link
-                    onClick={cerrarMenuMovil}
-                    className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                    href="/traslados"
-                  >
-                    Traslados
-                  </Link>
-                </>
-              )}
-            </div>
-          )}
-
-          {(puedeVender || puedeVerMovimientos) && (
-            <div>
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Operaciones
-              </p>
-
-              {puedeVender && (
-                <Link
-                  onClick={cerrarMenuMovil}
-                  className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                  href="/ventas"
-                >
-                  Ventas Marketplace
-                </Link>
-              )}
-
-              {puedeVerMovimientos && (
-                <Link
-                  onClick={cerrarMenuMovil}
-                  className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                  href="/movimientos"
-                >
-                  Movimientos
-                </Link>
-              )}
-            </div>
-          )}
-
-          {puedeVerConfiguracion && (
-            <div>
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Configuración
-              </p>
-
-              <Link
-                onClick={cerrarMenuMovil}
-                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                href="/configuracion/usuarios"
-              >
-                Usuarios
-              </Link>
-
-              <Link
-                onClick={cerrarMenuMovil}
-                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                href="/configuracion/productos"
-              >
-                Productos
-              </Link>
-
-              <Link
-                onClick={cerrarMenuMovil}
-                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                href="/configuracion/combos"
-              >
-                Combos
-              </Link>
-
-              <Link
-                onClick={cerrarMenuMovil}
-                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                href="/configuracion/nuevo-producto"
-              >
-                Nuevo Producto
-              </Link>
-
-              <Link
-                onClick={cerrarMenuMovil}
-                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                href="/configuracion/nuevo-combo"
-              >
-                Nuevo Combo
-              </Link>
-            </div>
-          )}
-
-          {puedeVerReportes && (
-            <div>
-              <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Análisis
-              </p>
-
-              <Link
-                onClick={cerrarMenuMovil}
-                className="block rounded-xl px-3 py-2 text-slate-200 hover:bg-slate-800"
-                href="/reportes"
-              >
-                Reportes
-              </Link>
-            </div>
-          )}
+          <MenuSection
+            title="Análisis"
+            links={linksReportes}
+            pathname={pathname}
+            onClick={cerrarMenuMovil}
+          />
 
           <div className="border-t border-slate-800 pt-4">
             <button

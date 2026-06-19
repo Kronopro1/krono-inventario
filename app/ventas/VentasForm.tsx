@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { supabase } from "@/src/lib/supabase"
 
 type Canal = {
@@ -40,6 +40,8 @@ type VentaItem = {
   cantidad: number
 }
 
+const ALMACEN_DEPOSITO_82_ID = "5d81da9f-4a03-42ba-952a-a76f1a8b8a9c"
+
 function ProductoBuscador({
   index,
   item,
@@ -63,6 +65,7 @@ function ProductoBuscador({
   const [abierto, setAbierto] = useState(false)
 
   const productoSeleccionado = obtenerProducto(item.productoId)
+
   const stock = productoSeleccionado
     ? obtenerStock(productoSeleccionado.sku)
     : null
@@ -127,7 +130,7 @@ function ProductoBuscador({
                 </div>
 
                 <div className="mt-1 text-xs text-slate-500">
-                  Stock: {productoStock ?? 0}
+                  Stock disponible: {productoStock ?? 0}
                 </div>
               </button>
             )
@@ -168,6 +171,20 @@ export default function VentasForm({
   productos: Producto[]
   inventario: Inventario[]
 }) {
+  const almacenPredeterminadoId = useMemo(() => {
+    const deposito82PorId = almacenes.find(
+      (almacen) => almacen.id === ALMACEN_DEPOSITO_82_ID
+    )
+
+    if (deposito82PorId) return deposito82PorId.id
+
+    const deposito82PorNombre = almacenes.find((almacen) =>
+      `${almacen.codigo} ${almacen.nombre}`.toLowerCase().includes("82")
+    )
+
+    return deposito82PorNombre?.id || ""
+  }, [almacenes])
+
   const [canalId, setCanalId] = useState("")
   const [empresaId, setEmpresaId] = useState("")
   const [almacenId, setAlmacenId] = useState("")
@@ -177,6 +194,12 @@ export default function VentasForm({
   const [items, setItems] = useState<VentaItem[]>([
     { productoId: "", cantidad: 1 },
   ])
+
+  useEffect(() => {
+    if (!almacenId && almacenPredeterminadoId) {
+      setAlmacenId(almacenPredeterminadoId)
+    }
+  }, [almacenId, almacenPredeterminadoId])
 
   const almacenSeleccionado = almacenes.find((a) => a.id === almacenId)
   const canalSeleccionado = canales.find((c) => c.id === canalId)
@@ -217,14 +240,21 @@ export default function VentasForm({
     value: string | number
   ) => {
     const nuevos = [...items]
+
     nuevos[index] = {
       ...nuevos[index],
-      [field]: value,
+      [field]: field === "cantidad" ? Number(value) : value,
     }
+
     setItems(nuevos)
   }
 
   const eliminarItem = (index: number) => {
+    if (items.length === 1) {
+      setItems([{ productoId: "", cantidad: 1 }])
+      return
+    }
+
     setItems(items.filter((_, i) => i !== index))
   }
 
@@ -233,12 +263,28 @@ export default function VentasForm({
     setLoading(true)
 
     try {
-      if (!canalId || !empresaId || !almacenId || !numeroOrden) {
+      if (!canalId || !empresaId || !almacenId || !numeroOrden.trim()) {
         throw new Error("Completa canal, empresa, almacén y número de orden.")
       }
 
       if (itemsValidos.length === 0) {
-        throw new Error("Agrega al menos un producto.")
+        throw new Error("Agrega al menos un producto válido.")
+      }
+
+      for (const item of itemsValidos) {
+        const producto = obtenerProducto(item.productoId)
+
+        if (!producto) {
+          throw new Error("Uno de los productos seleccionados no existe.")
+        }
+
+        const stockDisponible = obtenerStock(producto.sku)
+
+        if (stockDisponible !== null && Number(item.cantidad) > stockDisponible) {
+          throw new Error(
+            `Stock insuficiente para ${producto.sku}. Disponible: ${stockDisponible}.`
+          )
+        }
       }
 
       const { data: orden, error: ordenError } = await supabase
@@ -246,7 +292,7 @@ export default function VentasForm({
         .insert({
           canal_venta_id: canalId,
           empresa_id: empresaId,
-          numero_orden: numeroOrden,
+          numero_orden: numeroOrden.trim(),
           almacen_id: almacenId,
           comentario: "Registrado desde frontend Krono Inventario",
         })
@@ -279,7 +325,7 @@ export default function VentasForm({
       setMensaje("✅ Venta registrada y stock descontado correctamente.")
       setCanalId("")
       setEmpresaId("")
-      setAlmacenId("")
+      setAlmacenId(almacenPredeterminadoId)
       setNumeroOrden("")
       setItems([{ productoId: "", cantidad: 1 }])
     } catch (error: any) {
@@ -391,7 +437,7 @@ export default function VentasForm({
         <div className="mt-4 space-y-3">
           {items.map((item, index) => (
             <div
-              key={index}
+              key={`${index}-${item.productoId || "nuevo"}`}
               className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6"
             >
               <div className="md:col-span-4">
@@ -427,7 +473,7 @@ export default function VentasForm({
                   onClick={() => eliminarItem(index)}
                   className="w-full rounded-2xl bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
                 >
-                  Eliminar
+                  {items.length === 1 ? "Limpiar" : "Eliminar"}
                 </button>
               </div>
             </div>

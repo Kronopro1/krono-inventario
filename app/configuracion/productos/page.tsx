@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { supabase } from "@/src/lib/supabase"
 import ProductosConfigTable from "./ProductosConfigTable"
 
@@ -9,11 +10,27 @@ export default async function ProductosConfigPage() {
   )
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
-      <h1 className="text-4xl font-bold">Configuración de Productos</h1>
-      <p className="mt-2 text-slate-600">
-        Edita costo unitario y stock mínimo por producto.
-      </p>
+    <main className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm text-slate-500">Configuración</p>
+
+          <h1 className="text-3xl font-bold text-slate-950">
+            Productos
+          </h1>
+
+          <p className="mt-2 text-slate-600">
+            Administra los productos individuales, costos y stock mínimo.
+          </p>
+        </div>
+
+        <Link
+          href="/configuracion/nuevo-producto"
+          className="rounded-xl bg-slate-950 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          Nuevo producto
+        </Link>
+      </div>
 
       <ProductosConfigTable productos={productos ?? []} />
     </main>
