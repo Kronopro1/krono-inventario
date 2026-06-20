@@ -4,6 +4,11 @@ import crypto from "crypto"
 
 export const dynamic = "force-dynamic"
 
+type TipoDespacho =
+  | "dropshipping"
+  | "fulfillment_by_falabella"
+  | "desconocido"
+
 type OrdenImportada = {
   orderId: string
   orderNumber: string
@@ -133,6 +138,28 @@ function extraerCamposSimples(xml: string) {
   }
 
   return campos
+}
+
+function normalizarTipoDespacho(shippingType: string): TipoDespacho {
+  const valor = shippingType.toLowerCase().trim()
+
+  if (valor.includes("dropshipping")) {
+    return "dropshipping"
+  }
+
+  if (valor.includes("own warehouse")) {
+    return "fulfillment_by_falabella"
+  }
+
+  if (valor.includes("fulfillment")) {
+    return "fulfillment_by_falabella"
+  }
+
+  if (valor.includes("fbf")) {
+    return "fulfillment_by_falabella"
+  }
+
+  return "desconocido"
 }
 
 async function llamarFalabella(paramsBase: Record<string, string>) {
@@ -276,7 +303,12 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
 
     const searchParams = request.nextUrl.searchParams
     const limit = Number(searchParams.get("limit") || "10")
@@ -306,6 +338,8 @@ export async function GET(request: NextRequest) {
           errores.push("Orden sin OrderId u OrderNumber. Se omitió.")
           continue
         }
+
+        const tipoDespacho = normalizarTipoDespacho(orden.shippingType)
 
         const { data: ordenExistente } = await supabase
           .from("ordenes_importadas")
@@ -374,6 +408,7 @@ export async function GET(request: NextRequest) {
               items_count: orden.itemsCount,
               payment_method: orden.paymentMethod,
               shipping_type: orden.shippingType,
+              tipo_despacho: tipoDespacho,
 
               promised_shipping_time:
                 detalleCompleto?.promisedShippingTime || null,
@@ -485,6 +520,7 @@ export async function GET(request: NextRequest) {
             .from("ordenes_importadas")
             .update({
               estado_krono: nuevoEstado,
+              tipo_despacho: tipoDespacho,
               updated_at: new Date().toISOString(),
             })
             .eq("id", ordenGuardada.id)
@@ -501,6 +537,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       mensaje: "Importación de órdenes Falabella finalizada.",
+      criterio_importacion: {
+        origen: "Falabella Seller Center API",
+        rango_base: "Órdenes creadas en los últimos 30 días",
+        visualizacion_recomendada:
+          "En Krono se deben priorizar Envíos de hoy y próximos envíos usando promised_shipping_time.",
+        tipo_despacho:
+          "Dropshipping descuenta Depósito 82. Own Warehouse/Fulfillment descuenta FBF.",
+      },
       resumen: {
         limite_usado: limit,
         ordenes_leidas_desde_falabella: ordenes.length,
