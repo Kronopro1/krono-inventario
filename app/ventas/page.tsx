@@ -368,10 +368,15 @@ function TablaOrdenes({
 }
 
 export default async function OrdenesImportadasPage() {
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from("vista_ordenes_importadas")
     .select("*")
-    .not("estado_krono", "in", '("procesada","cancelada")')
+    .in("estado_krono", [
+    "lista_para_procesar",
+    "pendiente_mapeo",
+    "error_stock",
+    "error_procesamiento",
+    ])
     .order("promised_shipping_time", { ascending: true, nullsFirst: false })
     .limit(300)
 
@@ -380,7 +385,16 @@ export default async function OrdenesImportadasPage() {
     .select("*", { count: "exact", head: true })
     .eq("estado_krono", "procesada")
 
-  const ordenes = ((data || []) as OrdenImportada[]).sort(ordenarPorPromesa)
+  const ordenes = ((data || []) as OrdenImportada[])
+  .filter((orden) =>
+    [
+      "lista_para_procesar",
+      "pendiente_mapeo",
+      "error_stock",
+      "error_procesamiento",
+    ].includes(String(orden.estado_krono || "").trim())
+  )
+  .sort(ordenarPorPromesa)
 
   const dropshippingParaPreparar = ordenes
     .filter(
