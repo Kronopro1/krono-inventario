@@ -1,6 +1,7 @@
 ﻿
 import Link from "next/link"
 import { supabase } from "@/src/lib/supabase"
+import ProcesarOrdenListaButton from "./ProcesarOrdenListaButton"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -283,7 +284,7 @@ function TablaOrdenes({
         <div className="p-6 text-center text-sm text-gray-500">{vacio}</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-[1250px] divide-y text-sm">
+          <table className="w-full min-w-[1100px] divide-y text-xs">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">
@@ -401,14 +402,22 @@ function TablaOrdenes({
                       {formatearMonto(orden.total, orden.moneda)}
                     </td>
 
-                    <td className="px-4 py-3 text-right align-top">
-                      <Link
-                        href={`/ventas/importadas/${orden.id}`}
-                        className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        Revisar
-                      </Link>
-                    </td>
+		<td className="px-3 py-3 text-right align-top">
+		  <div className="flex min-w-[90px] flex-col items-end gap-2">
+		    <Link
+		      href={`/ventas/importadas/${orden.id}`}
+      		className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+    			>
+      			Revisar
+    		</Link>
+
+    <ProcesarOrdenListaButton
+      ordenId={orden.id}
+      estadoKrono={orden.estado_krono}
+      orderNumber={orden.order_number_marketplace}
+    />
+  </div>
+</td>
                   </tr>
                 )
               })}
