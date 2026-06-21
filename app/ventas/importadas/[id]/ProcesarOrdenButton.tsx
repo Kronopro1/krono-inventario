@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabase } from "@/src/lib/supabase"
 
 type Props = {
@@ -9,15 +10,20 @@ type Props = {
 }
 
 export default function ProcesarOrdenButton({ ordenId, estadoKrono }: Props) {
+  const router = useRouter()
+
   const [procesando, setProcesando] = useState(false)
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const puedeProcesar = estadoKrono === "lista_para_procesar"
+  const puedeProcesar =
+    estadoKrono === "lista_para_procesar" || estadoKrono === "error_stock"
 
   async function procesarOrden() {
     const confirmar = window.confirm(
-      "¿Seguro que deseas procesar esta orden? Esto creará la venta y descontará stock real."
+      estadoKrono === "error_stock"
+        ? "Esta orden tiene error de stock. Si tienes activo el permiso temporal, se procesará y podría dejar stock negativo. ¿Deseas continuar?"
+        : "¿Seguro que deseas procesar esta orden? Esto creará la venta y descontará stock real."
     )
 
     if (!confirmar) return
@@ -36,22 +42,24 @@ export default function ProcesarOrdenButton({ ordenId, estadoKrono }: Props) {
 
       if (error) {
         setError(error.message)
+        setProcesando(false)
         return
       }
 
       if (!data?.ok) {
         setError(data?.error || "No se pudo procesar la orden.")
+        setProcesando(false)
         return
       }
 
-      setMensaje(`Orden procesada correctamente. Venta creada: ${data.venta_id}`)
+      setMensaje("✅ Venta procesada correctamente. Volviendo a la lista...")
 
       setTimeout(() => {
-        window.location.reload()
-      }, 1200)
+        router.push("/ventas/importadas")
+        router.refresh()
+      }, 1500)
     } catch {
       setError("Ocurrió un error inesperado al procesar la orden.")
-    } finally {
       setProcesando(false)
     }
   }
@@ -79,9 +87,17 @@ export default function ProcesarOrdenButton({ ordenId, estadoKrono }: Props) {
         <h3 className="text-base font-semibold text-slate-900">
           Procesar venta
         </h3>
+
         <p className="text-sm text-slate-600">
           Esto creará la venta real y descontará stock del almacén configurado.
         </p>
+
+        {estadoKrono === "error_stock" && (
+          <p className="mt-2 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+            Esta orden tiene error de stock. Puedes procesarla solo si tienes
+            activo el permiso temporal para stock negativo.
+          </p>
+        )}
       </div>
 
       <button

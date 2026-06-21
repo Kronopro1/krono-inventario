@@ -1,5 +1,9 @@
+﻿
 import Link from "next/link"
 import { supabase } from "@/src/lib/supabase"
+
+export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 type TipoDespacho =
   | "dropshipping"
@@ -28,17 +32,31 @@ type OrdenImportada = {
   promised_shipping_time: string | null
   fecha_orden: string | null
   fecha_importacion: string | null
-
   total_lineas?: number | null
   lineas_mapeadas?: number | null
   lineas_pendientes?: number | null
-
   lineas?: number | null
   lineas_sin_mapear?: number | null
 }
 
+type DetalleOrden = {
+  orden_importada_id: string
+  sku_seller: string | null
+  nombre_marketplace: string | null
+  cantidad: number | null
+  producto_krono_nombre: string | null
+  mapeado: boolean | null
+}
+
 const ALMACEN_DROPSHIPPING = "Deposito Sotano Nro. 82"
 const ALMACEN_FBF = "FBF - Fulfillment by Falabella"
+
+const ESTADOS_PENDIENTES = [
+  "lista_para_procesar",
+  "pendiente_mapeo",
+  "error_stock",
+  "error_procesamiento",
+]
 
 function formatearFecha(fecha: string | null) {
   if (!fecha) return "-"
@@ -63,10 +81,6 @@ function formatearMonto(valor: number | null, moneda: string | null = "PEN") {
   return `${moneda || "PEN"} ${numero.toFixed(2)}`
 }
 
-function obtenerLineas(orden: OrdenImportada) {
-  return Number(orden.total_lineas ?? orden.lineas ?? orden.items_count ?? 0)
-}
-
 function obtenerLineasPendientes(orden: OrdenImportada) {
   return Number(orden.lineas_pendientes ?? orden.lineas_sin_mapear ?? 0)
 }
@@ -83,7 +97,7 @@ function obtenerDespacho(orden: OrdenImportada) {
   if (esDropshipping(orden)) {
     return {
       texto: "Dropshipping",
-      descripcion: "Tú preparas y despachas",
+      descripcion: "Tu preparas y despachas",
       clase: "bg-blue-50 text-blue-800 border-blue-200",
     }
   }
@@ -135,22 +149,8 @@ function obtenerAccionPendiente(orden: OrdenImportada) {
     }
 
     return {
-      texto: "Sin stock en Depósito 82",
+      texto: "Sin stock en Deposito 82",
       clase: "bg-red-100 text-red-800 border-red-200",
-    }
-  }
-
-  if (orden.estado_krono === "procesada") {
-    return {
-      texto: "Stock descontado",
-      clase: "bg-green-100 text-green-800 border-green-200",
-    }
-  }
-
-  if (orden.estado_krono === "cancelada") {
-    return {
-      texto: "Cancelada",
-      clase: "bg-gray-100 text-gray-800 border-gray-200",
     }
   }
 
@@ -186,14 +186,72 @@ function ordenarPorPromesa(a: OrdenImportada, b: OrdenImportada) {
   return fechaA - fechaB
 }
 
+function DetalleOrdenResumen({
+  detalles,
+}: {
+  detalles: DetalleOrden[]
+}) {
+  if (!detalles || detalles.length === 0) {
+    return <span className="text-xs text-gray-400">Sin detalle</span>
+  }
+
+  const visibles = detalles.slice(0, 3)
+  const ocultos = detalles.length - visibles.length
+
+  return (
+    <div className="max-w-[360px] space-y-2">
+      {visibles.map((detalle, index) => (
+        <div
+          key={`${detalle.orden_importada_id}-${detalle.sku_seller}-${index}`}
+          className="rounded-lg border border-slate-200 bg-slate-50 p-2"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="text-xs font-bold text-slate-900">
+              {detalle.sku_seller || "SKU sin codigo"}
+            </div>
+
+            <div className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+              Cant: {Number(detalle.cantidad || 0)}
+            </div>
+          </div>
+
+          <div className="mt-1 text-xs text-slate-700">
+            {detalle.nombre_marketplace || "Producto marketplace sin nombre"}
+          </div>
+
+          <div className="mt-1 text-xs">
+            {detalle.mapeado ? (
+              <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 font-medium text-green-800">
+                {detalle.producto_krono_nombre || "Mapeado"}
+              </span>
+            ) : (
+              <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-medium text-red-800">
+                Sin mapear
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {ocultos > 0 && (
+        <div className="text-xs font-medium text-slate-500">
+          + {ocultos} producto(s) mas
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TablaOrdenes({
   ordenes,
+  detallesPorOrden,
   titulo,
   descripcion,
   vacio,
   prioridad,
 }: {
   ordenes: OrdenImportada[]
+  detallesPorOrden: Record<string, DetalleOrden[]>
   titulo: string
   descripcion: string
   vacio: string
@@ -225,7 +283,7 @@ function TablaOrdenes({
         <div className="p-6 text-center text-sm text-gray-500">{vacio}</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="min-w-[1150px] divide-y text-sm">
+          <table className="min-w-[1250px] divide-y text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">
@@ -244,25 +302,22 @@ function TablaOrdenes({
                   Origen de stock
                 </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Acción pendiente
+                  Accion pendiente
                 </th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-600">
-                  Líneas
-                </th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-600">
-                  Sin mapear
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                  Detalle de la orden
                 </th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-600">
                   Producto
                 </th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                  Envío
+                  Envio
                 </th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-600">
                   Total
                 </th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                  Acción
+                  Accion
                 </th>
               </tr>
             </thead>
@@ -271,8 +326,7 @@ function TablaOrdenes({
               {ordenes.map((orden) => {
                 const despacho = obtenerDespacho(orden)
                 const accionPendiente = obtenerAccionPendiente(orden)
-                const lineas = obtenerLineas(orden)
-                const lineasPendientes = obtenerLineasPendientes(orden)
+                const detalles = detallesPorOrden[orden.id] || []
 
                 return (
                   <tr key={orden.id} className="hover:bg-gray-50">
@@ -316,7 +370,7 @@ function TablaOrdenes({
                       </div>
                       <div className="text-xs text-gray-500">
                         {esDropshipping(orden)
-                          ? "Stock físico propio"
+                          ? "Stock fisico propio"
                           : esFBF(orden)
                             ? "Stock entregado a Falabella"
                             : "Debe revisarse"}
@@ -331,20 +385,8 @@ function TablaOrdenes({
                       </span>
                     </td>
 
-                    <td className="px-4 py-3 text-center align-top text-gray-700">
-                      {lineas}
-                    </td>
-
-                    <td className="px-4 py-3 text-center align-top">
-                      <span
-                        className={
-                          lineasPendientes > 0
-                            ? "font-bold text-red-700"
-                            : "font-medium text-green-700"
-                        }
-                      >
-                        {lineasPendientes}
-                      </span>
+                    <td className="px-4 py-3 align-top">
+                      <DetalleOrdenResumen detalles={detalles} />
                     </td>
 
                     <td className="px-4 py-3 text-right align-top font-medium text-gray-900">
@@ -382,17 +424,48 @@ export default async function OrdenesImportadasPage() {
   const { data, error } = await supabase
     .from("vista_ordenes_importadas")
     .select("*")
+    .in("estado_krono", ESTADOS_PENDIENTES)
     .order("promised_shipping_time", { ascending: true, nullsFirst: false })
-    .limit(150)
+    .limit(300)
 
-  const ordenes = ((data || []) as OrdenImportada[]).sort(ordenarPorPromesa)
+  const { count: procesadasCount } = await supabase
+    .from("ordenes_importadas")
+    .select("*", { count: "exact", head: true })
+    .eq("estado_krono", "procesada")
 
-  const ordenesActivas = ordenes.filter(
-    (orden) =>
-      orden.estado_krono !== "procesada" && orden.estado_krono !== "cancelada"
-  )
+  const ordenes = ((data || []) as OrdenImportada[])
+    .filter((orden) =>
+      ESTADOS_PENDIENTES.includes(String(orden.estado_krono || "").trim())
+    )
+    .sort(ordenarPorPromesa)
 
-  const dropshippingParaPreparar = ordenesActivas
+  const ordenIds = ordenes.map((orden) => orden.id)
+
+  let detallesPorOrden: Record<string, DetalleOrden[]> = {}
+
+  if (ordenIds.length > 0) {
+    const { data: detallesData } = await supabase
+      .from("vista_ordenes_importadas_detalle")
+      .select(
+        "orden_importada_id, sku_seller, nombre_marketplace, cantidad, producto_krono_nombre, mapeado"
+      )
+      .in("orden_importada_id", ordenIds)
+
+    detallesPorOrden = ((detallesData || []) as DetalleOrden[]).reduce(
+      (acumulado, detalle) => {
+        if (!acumulado[detalle.orden_importada_id]) {
+          acumulado[detalle.orden_importada_id] = []
+        }
+
+        acumulado[detalle.orden_importada_id].push(detalle)
+
+        return acumulado
+      },
+      {} as Record<string, DetalleOrden[]>
+    )
+  }
+
+  const dropshippingParaPreparar = ordenes
     .filter(
       (orden) =>
         esDropshipping(orden) &&
@@ -401,7 +474,7 @@ export default async function OrdenesImportadasPage() {
     )
     .sort(ordenarPorPromesa)
 
-  const fbfParaControl = ordenesActivas
+  const fbfParaControl = ordenes
     .filter(
       (orden) =>
         esFBF(orden) &&
@@ -410,7 +483,7 @@ export default async function OrdenesImportadasPage() {
     )
     .sort(ordenarPorPromesa)
 
-  const ordenesConProblemas = ordenesActivas
+  const ordenesConProblemas = ordenes
     .filter((orden) => {
       const lineasPendientes = obtenerLineasPendientes(orden)
 
@@ -423,10 +496,6 @@ export default async function OrdenesImportadasPage() {
     })
     .sort(ordenarPorPromesa)
 
-  const procesadas = ordenes.filter(
-    (orden) => orden.estado_krono === "procesada"
-  ).length
-
   const totalPendientesMapeo = ordenes.reduce(
     (total, orden) => total + obtenerLineasPendientes(orden),
     0
@@ -436,36 +505,63 @@ export default async function OrdenesImportadasPage() {
     (orden) => orden.estado_krono === "error_stock"
   ).length
 
+  const totalPendientes =
+    dropshippingParaPreparar.length +
+    fbfParaControl.length +
+    ordenesConProblemas.length
+
   return (
     <main className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="text-sm text-gray-500">Ventas Marketplace</p>
           <h1 className="text-3xl font-bold text-gray-900">
-            Órdenes importadas de Falabella
+            Ordenes importadas de Falabella
           </h1>
           <p className="mt-2 max-w-3xl text-gray-600">
-            Pantalla operativa para separar las órdenes que debes preparar desde
-            tu almacén principal y las órdenes FBF que se descuentan del stock
-            entregado a Falabella.
+            Pantalla operativa para procesar unicamente ordenes pendientes.
+            Cuando una orden se procesa correctamente, desaparece de esta lista.
           </p>
         </div>
 
-        <Link
-          href="/api/falabella/importar-ordenes?limit=10"
-          className="rounded-lg bg-gray-900 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-800"
-        >
-          Importar desde Falabella
-        </Link>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Link
+            href="/ventas/importadas"
+            className="rounded-lg border px-4 py-2 text-center text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Actualizar lista
+          </Link>
+
+          <Link
+            href="/api/falabella/importar-ordenes?limit=10"
+            className="rounded-lg bg-gray-900 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-800"
+          >
+            Importar desde Falabella
+          </Link>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
+        <strong>Modo limpieza:</strong> trabaja de arriba hacia abajo. Al
+        procesar una orden correctamente, volvera a esta pantalla y la orden ya
+        no aparecera en pendientes.
       </div>
 
       <div className="grid gap-4 md:grid-cols-5">
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-sm text-gray-500">Pendientes visibles</p>
+          <p className="mt-2 text-2xl font-bold text-gray-900">
+            {totalPendientes}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">No incluye procesadas</p>
+        </div>
+
         <div className="rounded-xl border bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Para preparar</p>
           <p className="mt-2 text-2xl font-bold text-blue-700">
             {dropshippingParaPreparar.length}
           </p>
-          <p className="mt-1 text-xs text-gray-500">Dropshipping / Depósito 82</p>
+          <p className="mt-1 text-xs text-gray-500">Dropshipping / Deposito 82</p>
         </div>
 
         <div className="rounded-xl border bg-white p-4 shadow-sm">
@@ -481,57 +577,50 @@ export default async function OrdenesImportadasPage() {
           <p className="mt-2 text-2xl font-bold text-yellow-700">
             {ordenesConProblemas.length}
           </p>
-          <p className="mt-1 text-xs text-gray-500">
-            Mapeo o despacho sin definir
-          </p>
+          <p className="mt-1 text-xs text-gray-500">Mapeo o despacho</p>
         </div>
 
         <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm text-gray-500">Error de stock</p>
-          <p className="mt-2 text-2xl font-bold text-red-700">
-            {totalErrorStock}
-          </p>
-          <p className="mt-1 text-xs text-gray-500">Depósito 82 o FBF</p>
-        </div>
-
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm text-gray-500">Procesadas</p>
+          <p className="text-sm text-gray-500">Procesadas historicas</p>
           <p className="mt-2 text-2xl font-bold text-green-700">
-            {procesadas}
+            {procesadasCount ?? 0}
           </p>
           <p className="mt-1 text-xs text-gray-500">
-            Líneas sin mapear: {totalPendientesMapeo}
+            Lineas sin mapear: {totalPendientesMapeo}
           </p>
         </div>
       </div>
 
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          Error cargando órdenes importadas: {error.message}
+          Error cargando ordenes importadas: {error.message}
         </div>
       ) : (
         <>
           <TablaOrdenes
-            titulo="Órdenes para preparar - Dropshipping"
-            descripcion="Prioridad operativa. Estas órdenes se preparan físicamente desde Depósito 82 y luego se descuenta stock al procesarlas."
-            vacio="No hay órdenes Dropshipping listas para preparar."
+            titulo="Ordenes para preparar - Dropshipping"
+            descripcion="Prioridad operativa. Estas ordenes se preparan fisicamente desde Deposito 82 y luego se descuenta stock al procesarlas."
+            vacio="No hay ordenes Dropshipping listas para preparar."
             ordenes={dropshippingParaPreparar}
+            detallesPorOrden={detallesPorOrden}
             prioridad="alta"
           />
 
           <TablaOrdenes
-            titulo="Órdenes FBF - Control de stock Falabella"
-            descripcion="Estas órdenes no las preparas físicamente. Falabella las despacha, pero Krono descuenta el stock desde el almacén FBF."
-            vacio="No hay órdenes FBF pendientes de control."
+            titulo="Ordenes FBF - Control de stock Falabella"
+            descripcion="Estas ordenes no las preparas fisicamente. Falabella las despacha, pero Krono descuenta el stock desde el almacen FBF."
+            vacio="No hay ordenes FBF pendientes de control."
             ordenes={fbfParaControl}
+            detallesPorOrden={detallesPorOrden}
             prioridad="media"
           />
 
           <TablaOrdenes
-            titulo="Órdenes con problemas"
-            descripcion="Órdenes que necesitan mapeo de SKU o revisión del tipo de despacho antes de poder procesarse."
-            vacio="No hay órdenes con problemas pendientes."
+            titulo="Ordenes con problemas"
+            descripcion="Ordenes que necesitan mapeo de SKU o revision del tipo de despacho antes de poder procesarse."
+            vacio="No hay ordenes con problemas pendientes."
             ordenes={ordenesConProblemas}
+            detallesPorOrden={detallesPorOrden}
             prioridad="problema"
           />
         </>
@@ -539,9 +628,9 @@ export default async function OrdenesImportadasPage() {
 
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
         <strong>Regla operativa:</strong> Dropshipping descuenta desde{" "}
-        <strong>Depósito 82</strong>. FBF descuenta desde{" "}
-        <strong>FBF - Fulfillment by Falabella</strong>. Los estados técnicos se
-        conservan internamente, pero esta pantalla prioriza la acción operativa.
+        <strong>Deposito 82</strong>. FBF descuenta desde{" "}
+        <strong>FBF - Fulfillment by Falabella</strong>. Las ordenes procesadas
+        se ocultan automaticamente de esta pantalla para evitar confusion.
       </div>
     </main>
   )

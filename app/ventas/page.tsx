@@ -385,16 +385,7 @@ export default async function OrdenesImportadasPage() {
     .select("*", { count: "exact", head: true })
     .eq("estado_krono", "procesada")
 
-  const ordenes = ((data || []) as OrdenImportada[])
-  .filter((orden) =>
-    [
-      "lista_para_procesar",
-      "pendiente_mapeo",
-      "error_stock",
-      "error_procesamiento",
-    ].includes(String(orden.estado_krono || "").trim())
-  )
-  .sort(ordenarPorPromesa)
+  const ordenes = ((data || []) as OrdenImportada[]).sort(ordenarPorPromesa)
 
   const dropshippingParaPreparar = ordenes
     .filter(
