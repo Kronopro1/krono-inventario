@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState } from "react"
 import { supabase } from "@/src/lib/supabase"
@@ -7,6 +7,7 @@ type Producto = {
   id: string
   sku: string
   nombre: string
+  es_combo?: boolean | null
 }
 
 type Almacen = {
@@ -18,7 +19,11 @@ type Almacen = {
 type ItemIngreso = {
   productoId: string
   cantidad: number
+  busqueda: string
+  abierto: boolean
 }
+
+const ALMACEN_PRINCIPAL_ID = "5d81da9f-4a03-42ba-952a-a76f1a8b8a9c"
 
 export default function IngresosForm({
   productos,
@@ -29,16 +34,28 @@ export default function IngresosForm({
 }) {
   const hoy = new Date().toISOString().slice(0, 10)
 
-  const [almacenId, setAlmacenId] = useState("")
+  const [almacenId, setAlmacenId] = useState(() => {
+    const almacenPrincipal = almacenes.find(
+      (almacen) => almacen.id === ALMACEN_PRINCIPAL_ID
+    )
+
+    return almacenPrincipal?.id || almacenes[0]?.id || ""
+  })
+
   const [fecha, setFecha] = useState(hoy)
   const [observacion, setObservacion] = useState("")
   const [loading, setLoading] = useState(false)
   const [mensaje, setMensaje] = useState("")
   const [items, setItems] = useState<ItemIngreso[]>([
-    { productoId: "", cantidad: 1 },
+    {
+      productoId: "",
+      cantidad: 1,
+      busqueda: "",
+      abierto: false,
+    },
   ])
 
-  const almacenSeleccionado = almacenes.find((a) => a.id === almacenId)
+  const almacenSeleccionado = almacenes.find((almacen) => almacen.id === almacenId)
 
   const itemsValidos = items.filter(
     (item) => item.productoId && Number(item.cantidad) > 0
@@ -50,24 +67,80 @@ export default function IngresosForm({
   )
 
   const agregarItem = () => {
-    setItems([...items, { productoId: "", cantidad: 1 }])
+    setItems([
+      ...items,
+      {
+        productoId: "",
+        cantidad: 1,
+        busqueda: "",
+        abierto: false,
+      },
+    ])
   }
 
   const actualizarItem = (
     index: number,
-    field: "productoId" | "cantidad",
-    value: string | number
+    field: "productoId" | "cantidad" | "busqueda" | "abierto",
+    value: string | number | boolean
   ) => {
-    const nuevos = [...items]
-    nuevos[index] = {
-      ...nuevos[index],
-      [field]: value,
-    }
-    setItems(nuevos)
+    setItems((itemsActuales) => {
+      const nuevos = [...itemsActuales]
+
+      nuevos[index] = {
+        ...nuevos[index],
+        [field]: value,
+      }
+
+      return nuevos
+    })
   }
 
   const eliminarItem = (index: number) => {
+    if (items.length === 1) {
+      setItems([
+        {
+          productoId: "",
+          cantidad: 1,
+          busqueda: "",
+          abierto: false,
+        },
+      ])
+      return
+    }
+
     setItems(items.filter((_, i) => i !== index))
+  }
+
+  const filtrarProductos = (texto: string) => {
+    const busqueda = texto.trim().toLowerCase()
+
+    if (!busqueda) {
+      return productos.slice(0, 30)
+    }
+
+    return productos
+      .filter((producto) => {
+        const sku = producto.sku?.toLowerCase() || ""
+        const nombre = producto.nombre?.toLowerCase() || ""
+
+        return sku.includes(busqueda) || nombre.includes(busqueda)
+      })
+      .slice(0, 30)
+  }
+
+  const seleccionarProducto = (index: number, producto: Producto) => {
+    setItems((itemsActuales) => {
+      const nuevos = [...itemsActuales]
+
+      nuevos[index] = {
+        ...nuevos[index],
+        productoId: producto.id,
+        busqueda: `${producto.sku} - ${producto.nombre}`,
+        abierto: false,
+      }
+
+      return nuevos
+    })
   }
 
   const registrarIngreso = async () => {
@@ -76,7 +149,7 @@ export default function IngresosForm({
 
     try {
       if (!almacenId || !fecha) {
-        throw new Error("Completa almacén y fecha.")
+        throw new Error("Completa almacen y fecha.")
       }
 
       if (itemsValidos.length === 0) {
@@ -97,12 +170,19 @@ export default function IngresosForm({
 
       if (error) throw error
 
-      setMensaje("✅ Ingreso registrado correctamente.")
-      setItems([{ productoId: "", cantidad: 1 }])
+      setMensaje("Ingreso registrado correctamente.")
+      setItems([
+        {
+          productoId: "",
+          cantidad: 1,
+          busqueda: "",
+          abierto: false,
+        },
+      ])
       setObservacion("")
       setFecha(hoy)
     } catch (error: any) {
-      setMensaje(`❌ ${error.message}`)
+      setMensaje(error.message || "Error registrando ingreso.")
     } finally {
       setLoading(false)
     }
@@ -116,22 +196,22 @@ export default function IngresosForm({
             Datos del ingreso
           </h2>
           <p className="text-sm text-slate-500">
-            Registra mercadería recibida y actualiza el stock del almacén seleccionado.
+            Registra mercaderia recibida y actualiza el stock del almacen seleccionado.
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <label className="text-sm font-medium text-slate-700">
-              Almacén destino
+              Almacen destino
             </label>
 
             <select
               className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
               value={almacenId}
-              onChange={(e) => setAlmacenId(e.target.value)}
+              onChange={(event) => setAlmacenId(event.target.value)}
             >
-              <option value="">Seleccionar almacén</option>
+              <option value="">Seleccionar almacen</option>
               {almacenes.map((almacen) => (
                 <option key={almacen.id} value={almacen.id}>
                   {almacen.codigo} - {almacen.nombre}
@@ -149,20 +229,20 @@ export default function IngresosForm({
               type="date"
               className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
               value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
+              onChange={(event) => setFecha(event.target.value)}
             />
           </div>
 
           <div>
             <label className="text-sm font-medium text-slate-700">
-              Observación
+              Observacion
             </label>
 
             <input
               className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
               value={observacion}
-              onChange={(e) => setObservacion(e.target.value)}
-              placeholder="Ej. Ingreso reposición"
+              onChange={(event) => setObservacion(event.target.value)}
+              placeholder="Ej. Ingreso reposicion"
             />
           </div>
         </div>
@@ -173,7 +253,7 @@ export default function IngresosForm({
               Productos del ingreso
             </h2>
             <p className="text-sm text-slate-500">
-              Agrega una o más líneas de productos recibidos.
+              Busca por SKU o nombre y agrega una o mas lineas de productos recibidos.
             </p>
           </div>
 
@@ -187,68 +267,131 @@ export default function IngresosForm({
         </div>
 
         <div className="mt-4 space-y-3">
-          {items.map((item, index) => (
-            <div
-              key={index}
-              className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-            >
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
-                <div className="md:col-span-5">
-                  <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Producto
-                  </label>
+          {items.map((item, index) => {
+            const productoSeleccionado = productos.find(
+              (producto) => producto.id === item.productoId
+            )
 
-                  <select
-                    className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
-                    value={item.productoId}
-                    onChange={(e) =>
-                      actualizarItem(index, "productoId", e.target.value)
-                    }
-                  >
-                    <option value="">Seleccionar producto</option>
+            const productosFiltrados = filtrarProductos(item.busqueda)
 
-                    {productos.map((producto) => (
-                      <option key={producto.id} value={producto.id}>
-                        {producto.sku} - {producto.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            return (
+              <div
+                key={index}
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+              >
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
+                  <div className="relative md:col-span-5">
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Producto
+                    </label>
 
-                <div>
-                  <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Cantidad
-                  </label>
+                    <input
+                      type="text"
+                      className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
+                      value={item.busqueda}
+                      onChange={(event) => {
+                        const texto = event.target.value
 
-                  <input
-                    type="number"
-                    min="1"
-                    className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
-                    value={item.cantidad}
-                    onChange={(e) =>
-                      actualizarItem(index, "cantidad", Number(e.target.value))
-                    }
-                  />
-                </div>
+                        setItems((itemsActuales) => {
+                          const nuevos = [...itemsActuales]
 
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={() => eliminarItem(index)}
-                    className="w-full rounded-2xl bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
-                  >
-                    Eliminar
-                  </button>
+                          nuevos[index] = {
+                            ...nuevos[index],
+                            busqueda: texto,
+                            productoId: "",
+                            abierto: true,
+                          }
+
+                          return nuevos
+                        })
+                      }}
+                      onFocus={() => actualizarItem(index, "abierto", true)}
+                      placeholder="Buscar por SKU o nombre"
+                    />
+
+                    {item.abierto && (
+                      <div className="absolute z-30 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-lg">
+                        {productosFiltrados.length === 0 ? (
+                          <div className="px-3 py-3 text-sm text-red-600">
+                            No se encontraron productos.
+                          </div>
+                        ) : (
+                          productosFiltrados.map((producto) => (
+                            <button
+                              key={producto.id}
+                              type="button"
+                              onMouseDown={(event) => {
+                                event.preventDefault()
+                                seleccionarProducto(index, producto)
+                              }}
+                              className="flex w-full items-start justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                            >
+                              <div>
+                                <div className="font-semibold text-slate-900">
+                                  {producto.sku}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  {producto.nombre}
+                                </div>
+                              </div>
+
+                              <span
+                                className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                                  producto.es_combo
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-slate-100 text-slate-600"
+                                }`}
+                              >
+                                {producto.es_combo ? "Combo" : "Producto"}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    {productoSeleccionado && (
+                      <p className="mt-2 text-xs font-medium text-green-700">
+                        Seleccionado: {productoSeleccionado.sku}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Cantidad
+                    </label>
+
+                    <input
+                      type="number"
+                      min="1"
+                      className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm outline-none focus:border-slate-950"
+                      value={item.cantidad}
+                      onChange={(event) =>
+                        actualizarItem(index, "cantidad", Number(event.target.value))
+                      }
+                    />
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => eliminarItem(index)}
+                      className="w-full rounded-2xl bg-red-50 px-3 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {mensaje && (
           <div
             className={`mt-6 rounded-2xl p-4 text-sm font-medium ${
-              mensaje.startsWith("✅")
+              mensaje.includes("correctamente")
                 ? "bg-green-50 text-green-700"
                 : "bg-red-50 text-red-700"
             }`}
@@ -259,44 +402,42 @@ export default function IngresosForm({
       </div>
 
       <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-slate-950">
-          Resumen
-        </h2>
+        <h2 className="text-lg font-bold text-slate-950">Resumen</h2>
 
-        <div className="mt-5 space-y-4">
+        <div className="mt-6 space-y-4">
           <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">
-              Almacén destino
+            <p className="text-xs font-medium uppercase text-slate-500">
+              Almacen destino
             </p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {almacenSeleccionado?.codigo || "No seleccionado"}
+            <p className="mt-2 font-bold text-slate-950">
+              {almacenSeleccionado
+                ? `${almacenSeleccionado.codigo} - ${almacenSeleccionado.nombre}`
+                : "Sin seleccionar"}
             </p>
           </div>
 
           <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">
+            <p className="text-xs font-medium uppercase text-slate-500">
               Fecha
             </p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {fecha}
-            </p>
+            <p className="mt-2 font-bold text-slate-950">{fecha}</p>
           </div>
 
           <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">
-              Líneas
+            <p className="text-xs font-medium uppercase text-slate-500">
+              Lineas
             </p>
-            <p className="mt-1 font-semibold text-slate-900">
+            <p className="mt-2 font-bold text-slate-950">
               {itemsValidos.length} productos / {totalUnidades} unidades
             </p>
           </div>
 
           <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-500">
-              Observación
+            <p className="text-xs font-medium uppercase text-slate-500">
+              Observacion
             </p>
-            <p className="mt-1 font-semibold text-slate-900">
-              {observacion || "Sin observación"}
+            <p className="mt-2 font-bold text-slate-950">
+              {observacion || "Sin observacion"}
             </p>
           </div>
         </div>
@@ -305,13 +446,13 @@ export default function IngresosForm({
           type="button"
           onClick={registrarIngreso}
           disabled={loading}
-          className="mt-6 w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          className="mt-6 w-full rounded-2xl bg-slate-950 px-4 py-4 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? "Registrando..." : "Registrar ingreso"}
         </button>
 
-        <p className="mt-4 text-xs text-slate-400">
-          Al registrar el ingreso, el sistema aumentará el stock en el almacén seleccionado.
+        <p className="mt-4 text-xs text-slate-500">
+          Al registrar el ingreso, el sistema aumentara el stock en el almacen seleccionado.
         </p>
       </aside>
     </section>
