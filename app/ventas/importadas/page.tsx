@@ -1,5 +1,4 @@
-﻿
-import Link from "next/link"
+﻿import Link from "next/link"
 import { supabase } from "@/src/lib/supabase"
 import ProcesarOrdenListaButton from "./ProcesarOrdenListaButton"
 
@@ -33,9 +32,11 @@ type OrdenImportada = {
   promised_shipping_time: string | null
   fecha_orden: string | null
   fecha_importacion: string | null
+
   total_lineas?: number | null
   lineas_mapeadas?: number | null
   lineas_pendientes?: number | null
+
   lineas?: number | null
   lineas_sin_mapear?: number | null
 }
@@ -187,6 +188,54 @@ function ordenarPorPromesa(a: OrdenImportada, b: OrdenImportada) {
   return fechaA - fechaB
 }
 
+function normalizarTexto(valor: string | null | undefined) {
+  return String(valor || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+}
+
+function ordenCoincideBusqueda(
+  orden: OrdenImportada,
+  detalles: DetalleOrden[],
+  busqueda: string
+) {
+  const textoBuscado = normalizarTexto(busqueda)
+
+  if (!textoBuscado) return true
+
+  const camposOrden = [
+    orden.order_number_marketplace,
+    orden.order_id_marketplace,
+    orden.cliente_nombre,
+    orden.cliente_ciudad,
+    orden.cliente_region,
+    orden.estado_marketplace,
+    orden.estado_krono,
+    orden.tipo_despacho,
+    orden.shipping_type,
+  ]
+
+  const coincideOrden = camposOrden.some((campo) =>
+    normalizarTexto(campo).includes(textoBuscado)
+  )
+
+  if (coincideOrden) return true
+
+  return detalles.some((detalle) => {
+    const camposDetalle = [
+      detalle.sku_seller,
+      detalle.nombre_marketplace,
+      detalle.producto_krono_nombre,
+    ]
+
+    return camposDetalle.some((campo) =>
+      normalizarTexto(campo).includes(textoBuscado)
+    )
+  })
+}
+
 function DetalleOrdenResumen({
   detalles,
 }: {
@@ -287,37 +336,31 @@ function TablaOrdenes({
           <table className="w-full min-w-[1100px] divide-y text-xs">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                <th className="px-3 py-3 text-left font-semibold text-gray-600">
                   Orden
                 </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                <th className="px-3 py-3 text-left font-semibold text-gray-600">
                   Cliente
                 </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                <th className="px-3 py-3 text-left font-semibold text-gray-600">
                   Fecha prometida
                 </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                <th className="px-3 py-3 text-left font-semibold text-gray-600">
                   Despacho
                 </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Origen de stock
+                <th className="px-3 py-3 text-left font-semibold text-gray-600">
+                  Origen stock
                 </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                <th className="px-3 py-3 text-left font-semibold text-gray-600">
                   Accion pendiente
                 </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                <th className="px-3 py-3 text-left font-semibold text-gray-600">
                   Detalle de la orden
                 </th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                  Producto
-                </th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-600">
-                  Envio
-                </th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                <th className="px-3 py-3 text-right font-semibold text-gray-600">
                   Total
                 </th>
-                <th className="px-4 py-3 text-right font-semibold text-gray-600">
+                <th className="px-3 py-3 text-right font-semibold text-gray-600">
                   Accion
                 </th>
               </tr>
@@ -331,7 +374,7 @@ function TablaOrdenes({
 
                 return (
                   <tr key={orden.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 align-top">
+                    <td className="px-3 py-3 align-top">
                       <div className="font-semibold text-gray-900">
                         {orden.order_number_marketplace}
                       </div>
@@ -340,7 +383,7 @@ function TablaOrdenes({
                       </div>
                     </td>
 
-                    <td className="px-4 py-3 align-top">
+                    <td className="px-3 py-3 align-top">
                       <div className="font-medium text-gray-900">
                         {orden.cliente_nombre || "-"}
                       </div>
@@ -350,11 +393,11 @@ function TablaOrdenes({
                       </div>
                     </td>
 
-                    <td className="px-4 py-3 align-top text-gray-700">
+                    <td className="px-3 py-3 align-top text-gray-700">
                       {formatearFecha(orden.promised_shipping_time)}
                     </td>
 
-                    <td className="px-4 py-3 align-top">
+                    <td className="px-3 py-3 align-top">
                       <span
                         className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${despacho.clase}`}
                       >
@@ -365,20 +408,20 @@ function TablaOrdenes({
                       </div>
                     </td>
 
-                    <td className="px-4 py-3 align-top">
+                    <td className="px-3 py-3 align-top">
                       <div className="font-medium text-gray-900">
                         {obtenerOrigenStock(orden)}
                       </div>
                       <div className="text-xs text-gray-500">
                         {esDropshipping(orden)
-                          ? "Stock fisico propio"
+                          ? "Stock propio"
                           : esFBF(orden)
-                            ? "Stock entregado a Falabella"
-                            : "Debe revisarse"}
+                            ? "Stock FBF"
+                            : "Revisar"}
                       </div>
                     </td>
 
-                    <td className="px-4 py-3 align-top">
+                    <td className="px-3 py-3 align-top">
                       <span
                         className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${accionPendiente.clase}`}
                       >
@@ -386,38 +429,30 @@ function TablaOrdenes({
                       </span>
                     </td>
 
-                    <td className="px-4 py-3 align-top">
+                    <td className="px-3 py-3 align-top">
                       <DetalleOrdenResumen detalles={detalles} />
                     </td>
 
-                    <td className="px-4 py-3 text-right align-top font-medium text-gray-900">
-                      {formatearMonto(orden.product_total, orden.moneda)}
-                    </td>
-
-                    <td className="px-4 py-3 text-right align-top font-medium text-gray-900">
-                      {formatearMonto(orden.shipping_fee_total, orden.moneda)}
-                    </td>
-
-                    <td className="px-4 py-3 text-right align-top font-bold text-gray-900">
+                    <td className="px-3 py-3 text-right align-top font-bold text-gray-900">
                       {formatearMonto(orden.total, orden.moneda)}
                     </td>
 
-		<td className="px-3 py-3 text-right align-top">
-		  <div className="flex min-w-[90px] flex-col items-end gap-2">
-		    <Link
-		      href={`/ventas/importadas/${orden.id}`}
-      		className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-    			>
-      			Revisar
-    		</Link>
+                    <td className="px-3 py-3 text-right align-top">
+                      <div className="flex min-w-[90px] flex-col items-end gap-2">
+                        <Link
+                          href={`/ventas/importadas/${orden.id}`}
+                          className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          Revisar
+                        </Link>
 
-    <ProcesarOrdenListaButton
-      ordenId={orden.id}
-      estadoKrono={orden.estado_krono}
-      orderNumber={orden.order_number_marketplace}
-    />
-  </div>
-</td>
+                        <ProcesarOrdenListaButton
+                          ordenId={orden.id}
+                          estadoKrono={orden.estado_krono}
+                          orderNumber={orden.order_number_marketplace}
+                        />
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
@@ -429,7 +464,16 @@ function TablaOrdenes({
   )
 }
 
-export default async function OrdenesImportadasPage() {
+export default async function OrdenesImportadasPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{
+    q?: string
+  }>
+}) {
+  const parametros = searchParams ? await searchParams : {}
+  const busquedaOrden = String(parametros.q || "").trim()
+
   const { data, error } = await supabase
     .from("vista_ordenes_importadas")
     .select("*")
@@ -442,7 +486,7 @@ export default async function OrdenesImportadasPage() {
     .select("*", { count: "exact", head: true })
     .eq("estado_krono", "procesada")
 
-  const ordenes = ((data || []) as OrdenImportada[])
+  let ordenes = ((data || []) as OrdenImportada[])
     .filter((orden) =>
       ESTADOS_PENDIENTES.includes(String(orden.estado_krono || "").trim())
     )
@@ -471,6 +515,16 @@ export default async function OrdenesImportadasPage() {
         return acumulado
       },
       {} as Record<string, DetalleOrden[]>
+    )
+  }
+
+  if (busquedaOrden) {
+    ordenes = ordenes.filter((orden) =>
+      ordenCoincideBusqueda(
+        orden,
+        detallesPorOrden[orden.id] || [],
+        busquedaOrden
+      )
     )
   }
 
@@ -510,10 +564,6 @@ export default async function OrdenesImportadasPage() {
     0
   )
 
-  const totalErrorStock = ordenes.filter(
-    (orden) => orden.estado_krono === "error_stock"
-  ).length
-
   const totalPendientes =
     dropshippingParaPreparar.length +
     fbfParaControl.length +
@@ -549,6 +599,50 @@ export default async function OrdenesImportadasPage() {
           </Link>
         </div>
       </div>
+
+      <form
+        action="/ventas/importadas"
+        className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      >
+        <label className="text-sm font-semibold text-slate-700">
+          Buscar orden importada
+        </label>
+
+        <div className="mt-2 flex flex-col gap-3 md:flex-row">
+          <input
+            type="text"
+            name="q"
+            defaultValue={busquedaOrden}
+            placeholder="Buscar por orden, cliente, SKU o producto"
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-slate-900"
+          />
+
+          <button
+            type="submit"
+            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Buscar
+          </button>
+
+          {busquedaOrden ? (
+            <Link
+              href="/ventas/importadas"
+              className="rounded-xl border border-slate-300 px-5 py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Limpiar
+            </Link>
+          ) : null}
+        </div>
+
+        {busquedaOrden ? (
+          <p className="mt-3 text-sm text-slate-500">
+            Mostrando resultados para:{" "}
+            <span className="font-semibold text-slate-900">
+              {busquedaOrden}
+            </span>
+          </p>
+        ) : null}
+      </form>
 
       <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
         <strong>Modo limpieza:</strong> trabaja de arriba hacia abajo. Al
