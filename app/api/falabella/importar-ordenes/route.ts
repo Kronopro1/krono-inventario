@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import crypto from "crypto"
+import { enviarMensajeTelegram } from "@/src/lib/telegram"
 
 export const dynamic = "force-dynamic"
 
@@ -160,6 +161,60 @@ function normalizarTipoDespacho(shippingType: string): TipoDespacho {
   }
 
   return "desconocido"
+}
+
+function formatearFechaTelegram(fecha: string | null | undefined) {
+  if (!fecha) return "Sin fecha prometida"
+
+  const date = new Date(fecha)
+
+  if (Number.isNaN(date.getTime())) {
+    return fecha
+  }
+
+  return date.toLocaleString("es-PE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function crearMensajeNuevaOrdenTelegram({
+  orden,
+  detalleCompleto,
+  tipoDespacho,
+  productosTelegram,
+}: {
+  orden: OrdenImportada
+  detalleCompleto: OrdenDetalleCompleto | null
+  tipoDespacho: TipoDespacho
+  productosTelegram: string[]
+}) {
+  const empresa = process.env.FALABELLA_EMPRESA_NOMBRE || "GSS Express"
+
+  const productos =
+    productosTelegram.length > 0
+      ? productosTelegram.join("\n\n")
+      : [
+          `SKU Falabella + Empresa: ${empresa} - Sin SKU`,
+          "Nombre de SKU: Sin detalle",
+          "Producto: Sin detalle",
+        ].join("\n")
+
+  return [
+    "🎉 FELICIDADES, RECIBISTE UNA NUEVA ORDEN",
+    "",
+    `Orden: ${orden.orderNumber}`,
+    "",
+    productos,
+    "",
+    `Fecha prometida: ${formatearFechaTelegram(
+      detalleCompleto?.promisedShippingTime || null
+    )}`,
+    `Tipo de despacho: ${tipoDespacho}`,
+  ].join("\n")
 }
 
 async function llamarFalabella(paramsBase: Record<string, string>) {
@@ -329,6 +384,7 @@ export async function GET(request: NextRequest) {
     let detallesImportados = 0
     let detallesMapeados = 0
     let detallesCompletosLeidos = 0
+    let notificacionesTelegram = 0
 
     const errores: string[] = []
 
@@ -454,6 +510,7 @@ export async function GET(request: NextRequest) {
 
         let totalItemsOrden = 0
         let totalMapeadosOrden = 0
+        const productosTelegram: string[] = []
 
         for (const item of items) {
           totalItemsOrden += 1
@@ -467,6 +524,17 @@ export async function GET(request: NextRequest) {
             .maybeSingle()
 
           const estaMapeado = Boolean(mapeo?.producto_krono_id)
+
+          const empresaTelegram =
+            process.env.FALABELLA_EMPRESA_NOMBRE || "GSS Express"
+
+          productosTelegram.push(
+            [
+              `SKU Falabella + Empresa: ${empresaTelegram} - ${item.skuSeller || "Sin SKU"}`,
+              `Nombre de SKU: ${item.nombre || "Sin nombre"}`,
+              `Producto: ${mapeo?.producto_krono_nombre || "Sin mapear en Krono"}`,
+            ].join("\n")
+          )
 
           if (estaMapeado) {
             detallesMapeados += 1
@@ -525,6 +593,27 @@ export async function GET(request: NextRequest) {
             })
             .eq("id", ordenGuardada.id)
         }
+
+        if (!ordenExistente) {
+          const mensajeTelegram = crearMensajeNuevaOrdenTelegram({
+            orden,
+            detalleCompleto,
+            tipoDespacho,
+            productosTelegram,
+          })
+
+          const resultadoTelegram = await enviarMensajeTelegram({
+            mensaje: mensajeTelegram,
+          })
+
+          if (resultadoTelegram.ok) {
+            notificacionesTelegram += 1
+          } else {
+            errores.push(
+              `No se pudo enviar Telegram para la orden ${orden.orderNumber}: ${resultadoTelegram.error || "sin detalle"}`
+            )
+          }
+        }
       } catch (error: any) {
         errores.push(
           `Error procesando orden ${orden.orderNumber || orden.orderId}: ${
@@ -553,6 +642,7 @@ export async function GET(request: NextRequest) {
         detalles_completos_get_order: detallesCompletosLeidos,
         detalles_importados_o_actualizados: detallesImportados,
         detalles_mapeados: detallesMapeados,
+        notificaciones_telegram: notificacionesTelegram,
         errores: errores.length,
       },
       errores,
