@@ -318,9 +318,11 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="mt-6">
-        <DashboardCharts almacenes={almacenes} />
-      </section>
+{/*
+<section className="mt-6">
+    <DashboardCharts almacenes={almacenes} />
+</section>
+*/}
 
       <section className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">

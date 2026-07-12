@@ -623,9 +623,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const { data: resultadoDropshippingAuto, error: errorDropshippingAuto } =
+      await supabase.rpc("procesar_ordenes_dropshipping_automaticas", {
+        p_limite: 20,
+      })
+
+    if (errorDropshippingAuto) {
+      errores.push(
+        `No se pudo ejecutar Dropshipping automático: ${errorDropshippingAuto.message}`
+      )
+    }
+
     return NextResponse.json({
       ok: true,
       mensaje: "Importación de órdenes Falabella finalizada.",
+      resultado_dropshipping_auto: resultadoDropshippingAuto || null,
+
       criterio_importacion: {
         origen: "Falabella Seller Center API",
         rango_base: "Órdenes creadas en los últimos 30 días",
