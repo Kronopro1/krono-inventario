@@ -13,24 +13,6 @@ type Movimiento = {
   almacen_origen: string | null
   almacen_destino: string | null
 }
-function esEntrada(tipo: string) {
-  const normalizado = tipo.toLowerCase()
-
-  return (
-    normalizado.includes("ingreso") ||
-    normalizado.includes("ajuste_positivo")
-  )
-}
-
-function esSalida(tipo: string) {
-  const normalizado = tipo.toLowerCase()
-
-  return (
-    normalizado.includes("venta") ||
-    normalizado.includes("salida") ||
-    normalizado.includes("ajuste_negativo")
-  )
-}
 
 function tipoBadge(tipo: string) {
   const normalizado = tipo.toLowerCase()
@@ -48,14 +30,6 @@ function tipoBadge(tipo: string) {
 
   if (normalizado.includes("traslado")) {
     return "bg-blue-50 text-blue-700 ring-blue-200"
-  }
-
-  if (normalizado.includes("ajuste_positivo")) {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200"
-  }
-
-  if (normalizado.includes("ajuste_negativo")) {
-    return "bg-amber-50 text-amber-700 ring-amber-200"
   }
 
   return "bg-slate-100 text-slate-700 ring-slate-200"
@@ -125,8 +99,6 @@ export default function MovimientosTable({
           <option value="ingreso">Ingresos</option>
           <option value="venta">Ventas</option>
           <option value="traslado">Traslados</option>
-          <option value="ajuste_positivo">Ajustes positivos</option>
-          <option value="ajuste_negativo">Ajustes negativos</option>
         </select>
 
         <select
@@ -158,79 +130,64 @@ export default function MovimientosTable({
               <th className="px-4 py-3">Orden</th>
               <th className="px-4 py-3">SKU</th>
               <th className="px-4 py-3">Producto</th>
-              <th className="px-4 py-3 text-center">Entrada</th>
-              <th className="px-4 py-3 text-center">Salida</th>
-              <th className="px-4 py-3 text-center">Neto</th>
+              <th className="px-4 py-3">Cantidad</th>
               <th className="px-4 py-3">Origen</th>
               <th className="px-4 py-3">Destino</th>
             </tr>
           </thead>
 
-<tbody>
-  {movimientosFiltrados.map((item, index) => (
-    <tr
-      key={index}
-      className="border-t border-slate-100"
-    >
-      <td className="px-4 py-3">
-        <div>
-  <p className="font-medium text-slate-900">
-    {new Date(item.fecha).toLocaleDateString("es-PE")}
-  </p>
+          <tbody>
+            {movimientosFiltrados.map((item, index) => (
+              <tr
+                key={index}
+                className="border-t border-slate-100"
+              >
+                <td className="px-4 py-3">
+                  {new Date(item.fecha).toLocaleDateString(
+                    "es-PE"
+                  )}
+                </td>
 
-  <p className="mt-1 text-xs text-slate-500">
-    {new Date(item.fecha).toLocaleTimeString("es-PE", {
-      hour: "2-digit",
-      minute: "2-digit",
-    })}
-  </p>
-</div>
-      </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${tipoBadge(
+                      item.tipo
+                    )}`}
+                  >
+                    {item.tipo}
+                  </span>
+                </td>
 
-      <td className="px-4 py-3">
-        <span
-          className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${tipoBadge(
-            item.tipo
-          )}`}
-        >
-          {item.tipo}
-        </span>
-      </td>
+                <td className="px-4 py-3 font-semibold">
+                  {item.numero_movimiento}
+                </td>
 
-      <td className="px-4 py-3 font-semibold">
-        {item.numero_movimiento}
-      </td>
+                <td className="px-4 py-3">
+                  {item.numero_orden ?? "-"}
+                </td>
 
-      <td className="px-4 py-3">
-        {item.numero_orden ?? "-"}
-      </td>
+                <td className="px-4 py-3 font-semibold">
+                  {item.sku}
+                </td>
 
-      <td className="px-4 py-3 font-semibold">
-        {item.sku}
-      </td>
+                <td className="px-4 py-3">
+                  {item.producto}
+                </td>
 
-      <td className="px-4 py-3">
-        {item.producto}
-      </td>
+                <td className="px-4 py-3 font-bold">
+                  {item.cantidad}
+                </td>
 
-      <td className="px-4 py-3 text-center font-bold text-green-700">
-        {esEntrada(item.tipo) ? item.cantidad : "-"}
-      </td>
+                <td className="px-4 py-3">
+                  {item.almacen_origen ?? "-"}
+                </td>
 
-      <td className="px-4 py-3 text-center font-bold text-red-700">
-        {esSalida(item.tipo) ? item.cantidad : "-"}
-      </td>
-
-      <td className="px-4 py-3">
-        {item.almacen_origen ?? "-"}
-      </td>
-
-      <td className="px-4 py-3">
-        {item.almacen_destino ?? "-"}
-      </td>
-    </tr>
-  ))}
-</tbody>
+                <td className="px-4 py-3">
+                  {item.almacen_destino ?? "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
     </>

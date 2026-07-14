@@ -1,1 +1,8 @@
-{}
+{
+  "crons": [
+    {
+      "path": "/api/cron/importar-falabella",
+      "schedule": "0 13 * * *"
+    }
+  ]
+}

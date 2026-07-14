@@ -174,7 +174,7 @@ export default function Sidebar({
 
   if (puedeVerMovimientos) {
     inventario.push({
-      label: "Movimientos",
+      label: "Kardex",
       href: "/movimientos",
       icon: <PackageSearch size={18} />,
     })

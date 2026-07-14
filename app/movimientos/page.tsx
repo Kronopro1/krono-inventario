@@ -1,5 +1,8 @@
 import { supabase } from "@/src/lib/supabase"
 import MovimientosTable from "./MovimientosTable"
+import PageHeader from "@/app/componentes/ui/PageHeader"
+import StatCard from "@/app/componentes/ui/StatCard"
+import SectionCard from "@/app/componentes/ui/SectionCard"
 
 export const dynamic = "force-dynamic"
 
@@ -37,74 +40,54 @@ export default async function MovimientosPage() {
   ).length
 
   return (
-    <main>
-      <section className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <div>
-          <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
-            Auditoría
-          </p>
-
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950">
-            Historial de movimientos
-          </h1>
-
-          <p className="mt-2 text-slate-500">
-            Kardex general de ingresos, ventas y traslados registrados en el sistema.
-          </p>
-        </div>
-
+  <main>
+    <PageHeader
+      eyebrow="Auditoría"
+      title="Kardex"
+      description="Historial general de ingresos, ventas, ajustes y traslados registrados en el inventario."
+      actions={
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
           Trazabilidad completa de inventario
         </div>
-      </section>
+      }
+    />
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Movimientos</p>
-          <h2 className="mt-3 text-3xl font-bold text-slate-950">
-            {totalMovimientos}
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">Registros históricos</p>
-        </div>
+    <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <StatCard
+        label="Movimientos"
+        value={totalMovimientos}
+        helper="Registros históricos"
+      />
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Ingresos</p>
-          <h2 className="mt-3 text-3xl font-bold text-green-700">
-            {ingresos}
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">Entradas de stock</p>
-        </div>
+      <StatCard
+        label="Ingresos"
+        value={ingresos}
+        helper="Entradas de stock"
+        tone="success"
+      />
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Ventas / salidas</p>
-          <h2 className="mt-3 text-3xl font-bold text-red-700">
-            {ventas}
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">Descuentos de stock</p>
-        </div>
+      <StatCard
+        label="Ventas / salidas"
+        value={ventas}
+        helper="Descuentos de stock"
+        tone="danger"
+      />
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Traslados</p>
-          <h2 className="mt-3 text-3xl font-bold text-blue-700">
-            {traslados}
-          </h2>
-          <p className="mt-2 text-sm text-slate-400">Movimientos internos</p>
-        </div>
-      </section>
+      <StatCard
+        label="Traslados"
+        value={traslados}
+        helper="Movimientos internos"
+      />
+    </section>
 
-      <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-5">
-          <h2 className="text-lg font-bold text-slate-950">
-            Kardex general
-          </h2>
-
-          <p className="text-sm text-slate-500">
-            Filtra por SKU, producto, tipo de movimiento o almacén.
-          </p>
-        </div>
-
+    <div className="mt-6">
+      <SectionCard
+        title="Kardex general"
+        description="Filtra por SKU, producto, tipo de movimiento o almacén."
+      >
         <MovimientosTable movimientos={movimientos} />
-      </section>
-    </main>
-  )
+      </SectionCard>
+    </div>
+  </main>
+)
 }

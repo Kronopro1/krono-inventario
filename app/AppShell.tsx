@@ -259,8 +259,8 @@ export default function AppShell({ children }: AppShellProps) {
   }
 
   if (puedeVerMovimientos) {
-    linksOperaciones.push({ label: "Movimientos", href: "/movimientos" })
-  }
+  linksOperaciones.push({ label: "Kardex", href: "/movimientos" })
+}
 
   const linksConfiguracion: MenuLink[] = puedeVerConfiguracion
     ? [
