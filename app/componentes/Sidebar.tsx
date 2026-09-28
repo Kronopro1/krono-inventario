@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { ReactNode, useState } from "react"
 
 import {
   LayoutDashboard,
@@ -15,6 +16,11 @@ import {
   Users,
   LogOut,
   ChevronDown,
+  ContactRound,
+  KanbanSquare,
+  ListChecks,
+  ArchiveRestore,
+  BarChart3,
 } from "lucide-react"
 
 export type SidebarPerfil = {
@@ -22,8 +28,6 @@ export type SidebarPerfil = {
   email: string
   rol: string
 }
-
-import { ReactNode, useMemo, useState } from "react"
 
 type SidebarLink = {
   label: string
@@ -41,6 +45,8 @@ type SidebarProps = {
   puedeVender: boolean
   puedeVerMovimientos: boolean
   puedeVerConfiguracion: boolean
+  puedeVerReportes: boolean
+  puedeVerCRM: boolean
   onClose: () => void
   onLogout: () => void
 }
@@ -65,8 +71,8 @@ function NavLink({
       onClick={onClick}
       className={`group flex items-center gap-3 rounded-xl px-3 py-3 transition-all duration-200 ${
         activo
-  ? "bg-gradient-to-r from-blue-600 to-blue-500 font-semibold text-white shadow-lg scale-[1.02]"
-  : "text-slate-300 hover:bg-slate-800 hover:text-white hover:translate-x-1"
+          ? "scale-[1.02] bg-gradient-to-r from-blue-600 to-blue-500 font-semibold text-white shadow-lg"
+          : "text-slate-300 hover:translate-x-1 hover:bg-slate-800 hover:text-white"
       }`}
     >
       <span className="w-5 text-center">{link.icon}</span>
@@ -98,12 +104,11 @@ function MenuSection({
         className="mb-2 flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 transition hover:bg-slate-900 hover:text-slate-300"
       >
         <span>{title}</span>
+
         <ChevronDown
-  size={16}
-  className={`transition-transform ${
-    abierto ? "rotate-180" : ""
-  }`}
-/>
+          size={16}
+          className={`transition-transform ${abierto ? "rotate-180" : ""}`}
+        />
       </button>
 
       {abierto && (
@@ -132,28 +137,60 @@ export default function Sidebar({
   puedeVender,
   puedeVerMovimientos,
   puedeVerConfiguracion,
+  puedeVerReportes,
+  puedeVerCRM,
   onClose,
   onLogout,
 }: SidebarProps) {
-    const [busqueda, setBusqueda] = useState("")
-    const filtrarLinks = (links: SidebarLink[]) => {
-  const termino = busqueda.trim().toLowerCase()
+  const [busqueda, setBusqueda] = useState("")
 
-  if (!termino) return links
+  const filtrarLinks = (links: SidebarLink[]) => {
+    const termino = busqueda.trim().toLowerCase()
 
-  return links.filter((link) =>
-    link.label.toLowerCase().includes(termino)
-  )
-}
+    if (!termino) return links
+
+    return links.filter((link) =>
+      link.label.toLowerCase().includes(termino)
+    )
+  }
+
   const principal: SidebarLink[] = puedeVerGeneral
-  ? [
-      {
-        label: "Inicio",
-        href: "/",
-        icon: <LayoutDashboard size={18} />,
-      },
-    ]
-  : []
+    ? [
+        {
+          label: "Inicio",
+          href: "/",
+          icon: <LayoutDashboard size={18} />,
+        },
+      ]
+    : []
+
+  const crm: SidebarLink[] = [
+        {
+          label: "Dashboard CRM",
+          href: "/crm",
+          icon: <LayoutDashboard size={18} />,
+        },
+        {
+          label: "Contactos",
+          href: "/crm/contactos",
+          icon: <ContactRound size={18} />,
+        },
+        {
+          label: "Pipeline",
+          href: "/crm/pipeline",
+          icon: <KanbanSquare size={18} />,
+        },
+        {
+          label: "Tareas",
+          href: "/crm/tareas",
+          icon: <ListChecks size={18} />,
+        },
+        {
+          label: "Desactivados",
+          href: "/crm/contactos/desactivados",
+          icon: <ArchiveRestore size={18} />,
+        },
+      ]
 
   const inventario: SidebarLink[] = []
 
@@ -161,14 +198,22 @@ export default function Sidebar({
     inventario.push({
       label: "Inventario",
       href: "/inventario",
-      icon: "▦",
+      icon: <Boxes size={18} />,
     })
   }
 
   if (puedeOperarInventario) {
     inventario.push(
-      { label: "Ingresos", href: "/ingresos", icon: <ArrowDownCircle size={18} /> },
-      { label: "Traslados", href: "/traslados", icon: <ArrowRightLeft size={18} /> }
+      {
+        label: "Ingresos",
+        href: "/ingresos",
+        icon: <ArrowDownCircle size={18} />,
+      },
+      {
+        label: "Traslados",
+        href: "/traslados",
+        icon: <ArrowRightLeft size={18} />,
+      }
     )
   }
 
@@ -179,6 +224,51 @@ export default function Sidebar({
       icon: <PackageSearch size={18} />,
     })
   }
+
+  const marketplace: SidebarLink[] = puedeVender
+    ? [
+        {
+          label: "Ventas",
+          href: "/ventas",
+          icon: <ShoppingCart size={18} />,
+        },
+        {
+          label: "Importaciones Falabella",
+          href: "/ventas/importadas",
+          icon: <CloudDownload size={18} />,
+        },
+      ]
+    : []
+
+  const reportes: SidebarLink[] = puedeVerReportes
+    ? [
+        {
+          label: "Centro de reportes",
+          href: "/reportes",
+          icon: <BarChart3 size={18} />,
+        },
+        {
+          label: "Inventario valorizado",
+          href: "/reportes/inventario",
+          icon: <Boxes size={18} />,
+        },
+        {
+          label: "Ventas",
+          href: "/reportes/ventas",
+          icon: <ShoppingCart size={18} />,
+        },
+        {
+          label: "Ranking",
+          href: "/reportes/ranking",
+          icon: <BarChart3 size={18} />,
+        },
+        {
+          label: "Alertas",
+          href: "/reportes/alertas",
+          icon: <PackageSearch size={18} />,
+        },
+      ]
+    : []
 
   const catalogo: SidebarLink[] = puedeVerConfiguracion
     ? [
@@ -191,17 +281,6 @@ export default function Sidebar({
           label: "Combos",
           href: "/configuracion/combos",
           icon: <Layers3 size={18} />,
-        },
-      ]
-    : []
-
-  const marketplace: SidebarLink[] = puedeVender
-    ? [
-        { label: "Ventas", href: "/ventas", icon: <ShoppingCart size={18} /> },
-        {
-          label: "Importaciones Falabella",
-          href: "/ventas/importadas",
-          icon: <CloudDownload size={18} />,
         },
       ]
     : []
@@ -241,20 +320,23 @@ export default function Sidebar({
 
       <div className="flex-1 overflow-y-auto px-5 py-5">
         <div className="mb-5">
-  <input
-    type="search"
-    value={busqueda}
-    onChange={(e) => setBusqueda(e.target.value)}
-    placeholder="Buscar módulo..."
-    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-blue-500"
-  />
-</div>
+          <input
+            type="search"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar módulo..."
+            className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-blue-500"
+          />
+        </div>
+
         {perfil && (
           <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4">
             <p className="text-sm font-semibold">{perfil.nombre}</p>
+
             <p className="mt-1 truncate text-xs text-slate-400">
               {perfil.email}
             </p>
+
             <span className="mt-3 inline-flex rounded-full bg-slate-800 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-200">
               {perfil.rol}
             </span>
@@ -270,6 +352,13 @@ export default function Sidebar({
           />
 
           <MenuSection
+            title="CRM"
+            links={filtrarLinks(crm)}
+            pathname={pathname}
+            onClick={onClose}
+          />
+
+          <MenuSection
             title="Inventario"
             links={filtrarLinks(inventario)}
             pathname={pathname}
@@ -277,15 +366,22 @@ export default function Sidebar({
           />
 
           <MenuSection
-            title="Catálogo"
-            links={filtrarLinks(catalogo)}
+            title="Marketplace"
+            links={filtrarLinks(marketplace)}
             pathname={pathname}
             onClick={onClose}
           />
 
           <MenuSection
-            title="Marketplace"
-            links={filtrarLinks(marketplace)}
+            title="Reportes"
+            links={filtrarLinks(reportes)}
+            pathname={pathname}
+            onClick={onClose}
+          />
+
+          <MenuSection
+            title="Catálogo"
+            links={filtrarLinks(catalogo)}
             pathname={pathname}
             onClick={onClose}
           />
@@ -306,9 +402,9 @@ export default function Sidebar({
           className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700"
         >
           <span className="flex items-center justify-center gap-2">
-  <LogOut size={17} />
-  Cerrar sesión
-</span>
+            <LogOut size={17} />
+            Cerrar sesión
+          </span>
         </button>
       </div>
     </aside>
