@@ -19,6 +19,7 @@ export default function NuevoContactoPage() {
     tipo_contacto: "Prospecto",
     estado_comercial: "Nuevo Lead",
     whatsapp: "",
+    whatsapp_usuario: "",
     telefono: "",
     email: "",
     instagram: "",
@@ -32,14 +33,19 @@ export default function NuevoContactoPage() {
     notas_internas: "",
   })
 
-  const actualizarCampo = (
-    campo: keyof typeof form,
-    valor: string
-  ) => {
+  const actualizarCampo = (campo: keyof typeof form, valor: string) => {
     setForm((prev) => ({
       ...prev,
       [campo]: valor,
     }))
+  }
+
+  const limpiarUsuarioWhatsapp = (usuario: string) => {
+    const limpio = usuario.trim()
+
+    if (!limpio) return null
+
+    return limpio.startsWith("@") ? limpio : `@${limpio}`
   }
 
   const guardarContacto = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -61,6 +67,7 @@ export default function NuevoContactoPage() {
         tipo_contacto: form.tipo_contacto,
         estado_comercial: form.estado_comercial,
         whatsapp: form.whatsapp.trim() || null,
+        whatsapp_usuario: limpiarUsuarioWhatsapp(form.whatsapp_usuario),
         telefono: form.telefono.trim() || null,
         email: form.email.trim() || null,
         instagram: form.instagram.trim() || null,
@@ -251,7 +258,7 @@ export default function NuevoContactoPage() {
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-[#1F1F1F]">
-                WhatsApp
+                WhatsApp número
               </label>
               <input
                 value={form.whatsapp}
@@ -259,6 +266,24 @@ export default function NuevoContactoPage() {
                 className="w-full rounded-xl border border-[#E5E2DA] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#737563] focus:ring-2 focus:ring-[#737563]/10"
                 placeholder="+51 999 999 999"
               />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-[#1F1F1F]">
+                Usuario WhatsApp
+              </label>
+              <input
+                value={form.whatsapp_usuario}
+                onChange={(e) =>
+                  actualizarCampo("whatsapp_usuario", e.target.value)
+                }
+                className="w-full rounded-xl border border-[#E5E2DA] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#737563] focus:ring-2 focus:ring-[#737563]/10"
+                placeholder="@usuario"
+              />
+              <p className="mt-2 text-xs text-[#737563]">
+                Úsalo cuando el contacto no tenga número visible, pero sí tenga
+                usuario de WhatsApp.
+              </p>
             </div>
 
             <div>

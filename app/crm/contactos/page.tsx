@@ -22,6 +22,7 @@ type CrmContacto = {
   tipo_contacto: string
   estado_comercial: string
   whatsapp: string | null
+  whatsapp_usuario: string | null
   email: string | null
   ciudad: string | null
   fuente_contacto: string | null
@@ -72,6 +73,10 @@ export default function ContactosPage() {
     (contacto) => contacto.estado_comercial === "Nuevo Lead"
   ).length
 
+  const contactosConUsuarioWhatsapp = contactos.filter(
+    (contacto) => !!contacto.whatsapp_usuario
+  ).length
+
   const tiposContacto = useMemo(() => {
     const tipos = contactos
       .map((contacto) => contacto.tipo_contacto)
@@ -99,6 +104,7 @@ export default function ContactosPage() {
         contacto.empresa_salon?.toLowerCase().includes(texto) ||
         contacto.email?.toLowerCase().includes(texto) ||
         contacto.whatsapp?.toLowerCase().includes(texto) ||
+        contacto.whatsapp_usuario?.toLowerCase().includes(texto) ||
         contacto.ciudad?.toLowerCase().includes(texto) ||
         contacto.tipo_contacto?.toLowerCase().includes(texto) ||
         contacto.estado_comercial?.toLowerCase().includes(texto) ||
@@ -119,6 +125,13 @@ export default function ContactosPage() {
     setBusqueda("")
     setFiltroTipo("Todos")
     setFiltroEstado("Todos")
+  }
+
+  const limpiarUsuarioWhatsapp = (usuario: string | null) => {
+    if (!usuario) return ""
+    const limpio = usuario.trim()
+    if (!limpio) return ""
+    return limpio.startsWith("@") ? limpio : `@${limpio}`
   }
 
   return (
@@ -191,7 +204,7 @@ export default function ContactosPage() {
           </div>
         )}
 
-        <section className="mb-6 grid gap-4 md:grid-cols-4">
+        <section className="mb-6 grid gap-4 md:grid-cols-5">
           <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
             <p className="text-sm text-[#737563]">Total contactos</p>
             <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
@@ -219,6 +232,13 @@ export default function ContactosPage() {
               {loading ? "..." : nuevosLeads}
             </h2>
           </div>
+
+          <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
+            <p className="text-sm text-[#737563]">Con @ WhatsApp</p>
+            <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
+              {loading ? "..." : contactosConUsuarioWhatsapp}
+            </h2>
+          </div>
         </section>
 
         <section className="mb-6 rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
@@ -237,7 +257,7 @@ export default function ContactosPage() {
                 <input
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Nombre, empresa, email, WhatsApp, ciudad..."
+                  placeholder="Nombre, empresa, email, número, @usuario, ciudad..."
                   className="w-full rounded-xl border border-[#E5E2DA] bg-[#F7F6F2] py-3 pl-11 pr-4 text-sm text-[#1F1F1F] outline-none transition placeholder:text-[#737563] focus:border-[#737563] focus:bg-white"
                 />
               </div>
@@ -313,7 +333,7 @@ export default function ContactosPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] border-collapse">
+            <table className="w-full min-w-[1150px] border-collapse">
               <thead>
                 <tr className="border-b border-[#E5E2DA] text-left text-xs uppercase tracking-[0.12em] text-[#737563]">
                   <th className="py-3 pr-4 font-semibold">Contacto</th>
@@ -342,73 +362,93 @@ export default function ContactosPage() {
                     </td>
                   </tr>
                 ) : (
-                  contactosFiltrados.map((contacto) => (
-                    <tr
-                      key={contacto.id}
-                      className="border-b border-[#F0EDE7] text-sm text-[#4A4A4A]"
-                    >
-                      <td className="py-4 pr-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F7F6F2] text-[#737563]">
-                            <UserRound size={18} />
-                          </div>
+                  contactosFiltrados.map((contacto) => {
+                    const usuarioWhatsapp = limpiarUsuarioWhatsapp(
+                      contacto.whatsapp_usuario
+                    )
 
-                          <div>
-                            <div className="font-semibold text-[#1F1F1F]">
-                              {contacto.nombre} {contacto.apellido || ""}
+                    return (
+                      <tr
+                        key={contacto.id}
+                        className="border-b border-[#F0EDE7] text-sm text-[#4A4A4A]"
+                      >
+                        <td className="py-4 pr-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F7F6F2] text-[#737563]">
+                              <UserRound size={18} />
                             </div>
 
-                            <div className="text-xs text-[#737563]">
-                              {contacto.email || "Sin email"}
+                            <div>
+                              <div className="font-semibold text-[#1F1F1F]">
+                                {contacto.nombre} {contacto.apellido || ""}
+                              </div>
+
+                              <div className="text-xs text-[#737563]">
+                                {contacto.email || "Sin email"}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="py-4 pr-4">
-                        {contacto.empresa_salon || "Sin empresa"}
-                      </td>
+                        <td className="py-4 pr-4">
+                          {contacto.empresa_salon || "Sin empresa"}
+                        </td>
 
-                      <td className="py-4 pr-4">
-                        <span className="rounded-full bg-[#F7F6F2] px-3 py-1 text-xs font-semibold text-[#737563]">
-                          {contacto.tipo_contacto}
-                        </span>
-                      </td>
+                        <td className="py-4 pr-4">
+                          <span className="rounded-full bg-[#F7F6F2] px-3 py-1 text-xs font-semibold text-[#737563]">
+                            {contacto.tipo_contacto}
+                          </span>
+                        </td>
 
-                      <td className="py-4 pr-4">
-                        {contacto.estado_comercial}
-                      </td>
+                        <td className="py-4 pr-4">
+                          {contacto.estado_comercial}
+                        </td>
 
-                      <td className="py-4 pr-4">
-                        {contacto.ciudad || "-"}
-                      </td>
+                        <td className="py-4 pr-4">
+                          {contacto.ciudad || "-"}
+                        </td>
 
-                      <td className="py-4 pr-4">
-                        {contacto.fuente_contacto || "-"}
-                      </td>
+                        <td className="py-4 pr-4">
+                          {contacto.fuente_contacto || "-"}
+                        </td>
 
-                      <td className="py-4 pr-4">
-                        {contacto.whatsapp || "-"}
-                      </td>
+                        <td className="py-4 pr-4">
+                          <div className="space-y-1">
+                            <div>{contacto.whatsapp || "-"}</div>
 
-                      <td className="py-4 pr-4">
-                        {contacto.proxima_accion || "-"}
-                      </td>
+                            {usuarioWhatsapp && (
+                              <div className="text-xs font-semibold text-green-700">
+                                {usuarioWhatsapp}
+                              </div>
+                            )}
 
-                      <td className="py-4 pr-4 font-semibold text-[#1F1F1F]">
-                        S/ {Number(contacto.valor_potencial || 0).toFixed(2)}
-                      </td>
+                            {!contacto.whatsapp && !usuarioWhatsapp && (
+                              <div className="text-xs text-[#737563]">
+                                Sin WhatsApp
+                              </div>
+                            )}
+                          </div>
+                        </td>
 
-                      <td className="py-4 pr-4">
-                        <Link
-                          href={`/crm/contactos/${contacto.id}`}
-                          className="inline-flex rounded-lg border border-[#E5E2DA] px-3 py-2 text-xs font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
-                        >
-                          Ver ficha
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
+                        <td className="py-4 pr-4">
+                          {contacto.proxima_accion || "-"}
+                        </td>
+
+                        <td className="py-4 pr-4 font-semibold text-[#1F1F1F]">
+                          S/ {Number(contacto.valor_potencial || 0).toFixed(2)}
+                        </td>
+
+                        <td className="py-4 pr-4">
+                          <Link
+                            href={`/crm/contactos/${contacto.id}`}
+                            className="inline-flex rounded-lg border border-[#E5E2DA] px-3 py-2 text-xs font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+                          >
+                            Ver ficha
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>

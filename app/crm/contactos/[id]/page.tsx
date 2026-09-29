@@ -32,6 +32,7 @@ type CrmContacto = {
   tipo_contacto: string
   estado_comercial: string
   whatsapp: string | null
+  whatsapp_usuario: string | null
   telefono: string | null
   email: string | null
   instagram: string | null
@@ -118,8 +119,8 @@ const plantillasRapidas = [
 
 export default function ContactoDetallePage() {
   const params = useParams()
-  const id = params.id as string
   const router = useRouter()
+  const id = params.id as string
 
   const [contacto, setContacto] = useState<CrmContacto | null>(null)
   const [notas, setNotas] = useState<CrmNota[]>([])
@@ -179,7 +180,7 @@ export default function ContactoDetallePage() {
       .eq("contacto_id", id)
       .order("fecha_tarea", { ascending: true })
 
-    setContacto(contactoData)
+    setContacto(contactoData as CrmContacto)
     setNotas((notasData || []) as CrmNota[])
     setTareas((tareasData || []) as CrmTarea[])
     setLoading(false)
@@ -303,6 +304,16 @@ export default function ContactoDetallePage() {
     return numero.replace(/\D/g, "")
   }
 
+  const limpiarUsuarioWhatsapp = (usuario: string | null) => {
+    if (!usuario) return ""
+
+    const limpio = usuario.trim()
+
+    if (!limpio) return ""
+
+    return limpio.startsWith("@") ? limpio : `@${limpio}`
+  }
+
   const obtenerPlantillaSeleccionada = () => {
     return (
       plantillasRapidas.find(
@@ -311,24 +322,16 @@ export default function ContactoDetallePage() {
     )
   }
 
-  const abrirWhatsAppConPlantilla = async () => {
-    if (!contacto) return
-
-    const whatsapp = limpiarWhatsapp(contacto.whatsapp)
-
-    if (!whatsapp) {
-      setError("Este contacto no tiene WhatsApp registrado.")
-      return
-    }
-
-    const plantilla = obtenerPlantillaSeleccionada()
-    const mensaje = encodeURIComponent(plantilla.mensaje)
-
+  const registrarActividadPlantilla = async (
+    contactoId: string,
+    tituloPlantilla: string,
+    mensajePlantilla: string
+  ) => {
     await supabase.from("crm_actividades").insert({
-      contacto_id: contacto.id,
+      contacto_id: contactoId,
       tipo: "WhatsApp",
-      titulo: `Plantilla usada: ${plantilla.titulo}`,
-      descripcion: plantilla.mensaje,
+      titulo: `Plantilla usada: ${tituloPlantilla}`,
+      descripcion: mensajePlantilla,
     })
 
     await supabase
@@ -336,9 +339,47 @@ export default function ContactoDetallePage() {
       .update({
         ultima_interaccion: new Date().toISOString(),
       })
-      .eq("id", contacto.id)
+      .eq("id", contactoId)
+  }
 
-    window.open(`https://wa.me/${whatsapp}?text=${mensaje}`, "_blank")
+  const abrirWhatsAppConPlantilla = async () => {
+    if (!contacto) return
+
+    setError("")
+
+    const whatsapp = limpiarWhatsapp(contacto.whatsapp)
+    const usuarioWhatsapp = limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
+    const plantilla = obtenerPlantillaSeleccionada()
+    const mensaje = encodeURIComponent(plantilla.mensaje)
+
+    await registrarActividadPlantilla(
+      contacto.id,
+      plantilla.titulo,
+      plantilla.mensaje
+    )
+
+    if (whatsapp) {
+      window.open(`https://wa.me/${whatsapp}?text=${mensaje}`, "_blank")
+      return
+    }
+
+    if (usuarioWhatsapp) {
+      try {
+        await navigator.clipboard.writeText(usuarioWhatsapp)
+
+        setError(
+          `Este contacto no tiene número de WhatsApp. Se copió el usuario ${usuarioWhatsapp} para buscarlo manualmente en WhatsApp.`
+        )
+      } catch {
+        setError(
+          `Este contacto no tiene número de WhatsApp. Copia manualmente este usuario: ${usuarioWhatsapp}`
+        )
+      }
+
+      return
+    }
+
+    setError("Este contacto no tiene número ni usuario de WhatsApp registrado.")
   }
 
   if (loading) {
@@ -375,8 +416,11 @@ export default function ContactoDetallePage() {
     contacto.apellido || ""
   }`.trim()
 
-  const whatsappLink = contacto.whatsapp
-    ? `https://wa.me/${contacto.whatsapp.replace(/\D/g, "")}`
+  const whatsappLimpio = limpiarWhatsapp(contacto.whatsapp)
+  const usuarioWhatsapp = limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
+
+  const whatsappLink = whatsappLimpio
+    ? `https://wa.me/${whatsappLimpio}`
     : "#"
 
   return (
@@ -428,6 +472,12 @@ export default function ContactoDetallePage() {
                       Fuente: {contacto.fuente_contacto}
                     </span>
                   )}
+
+                  {usuarioWhatsapp && (
+                    <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
+                      Usuario WhatsApp: {usuarioWhatsapp}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -450,7 +500,7 @@ export default function ContactoDetallePage() {
                 Desactivar
               </button>
 
-              {contacto.whatsapp && (
+              {whatsappLimpio && (
                 <a
                   href={whatsappLink}
                   target="_blank"
@@ -517,7 +567,7 @@ export default function ContactoDetallePage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700"
             >
               <Send size={18} />
-              Abrir WhatsApp
+              {whatsappLimpio ? "Abrir WhatsApp" : "Copiar usuario"}
             </button>
           </div>
 
@@ -525,10 +575,18 @@ export default function ContactoDetallePage() {
             {obtenerPlantillaSeleccionada().mensaje}
           </div>
 
-          {!contacto.whatsapp && (
+          {!whatsappLimpio && !usuarioWhatsapp && (
             <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-700">
-              Este contacto no tiene WhatsApp registrado. Agrega un número para
-              usar esta acción rápida.
+              Este contacto no tiene número ni usuario de WhatsApp registrado.
+              Agrega uno de los dos para usar esta acción rápida.
+            </div>
+          )}
+
+          {!whatsappLimpio && usuarioWhatsapp && (
+            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+              Este contacto no tiene número de WhatsApp, pero sí tiene usuario{" "}
+              <strong>{usuarioWhatsapp}</strong>. Al usar la plantilla, el
+              sistema copiará el usuario para buscarlo manualmente en WhatsApp.
             </div>
           )}
         </section>
@@ -656,7 +714,12 @@ export default function ContactoDetallePage() {
               <div className="mt-5 space-y-4 text-sm text-[#4A4A4A]">
                 <div className="flex gap-3">
                   <MessageCircle size={18} className="text-[#737563]" />
-                  <span>{contacto.whatsapp || "Sin WhatsApp"}</span>
+                  <span>{contacto.whatsapp || "Sin WhatsApp número"}</span>
+                </div>
+
+                <div className="flex gap-3">
+                  <MessageSquareText size={18} className="text-[#737563]" />
+                  <span>{usuarioWhatsapp || "Sin usuario WhatsApp"}</span>
                 </div>
 
                 <div className="flex gap-3">

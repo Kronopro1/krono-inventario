@@ -13,6 +13,7 @@ type ContactoForm = {
   tipo_contacto: string
   estado_comercial: string
   whatsapp: string
+  whatsapp_usuario: string
   telefono: string
   email: string
   instagram: string
@@ -74,6 +75,7 @@ export default function EditarContactoPage() {
     tipo_contacto: "Salón",
     estado_comercial: "Nuevo Lead",
     whatsapp: "",
+    whatsapp_usuario: "",
     telefono: "",
     email: "",
     instagram: "",
@@ -111,6 +113,7 @@ export default function EditarContactoPage() {
         tipo_contacto: data.tipo_contacto || "Salón",
         estado_comercial: data.estado_comercial || "Nuevo Lead",
         whatsapp: data.whatsapp || "",
+        whatsapp_usuario: data.whatsapp_usuario || "",
         telefono: data.telefono || "",
         email: data.email || "",
         instagram: data.instagram || "",
@@ -142,6 +145,14 @@ export default function EditarContactoPage() {
     }))
   }
 
+  const limpiarUsuarioWhatsapp = (usuario: string) => {
+    const limpio = usuario.trim()
+
+    if (!limpio) return null
+
+    return limpio.startsWith("@") ? limpio : `@${limpio}`
+  }
+
   const guardarCambios = async (e: React.FormEvent) => {
     e.preventDefault()
     setGuardando(true)
@@ -162,6 +173,7 @@ export default function EditarContactoPage() {
         tipo_contacto: form.tipo_contacto,
         estado_comercial: form.estado_comercial,
         whatsapp: form.whatsapp.trim() || null,
+        whatsapp_usuario: limpiarUsuarioWhatsapp(form.whatsapp_usuario),
         telefono: form.telefono.trim() || null,
         email: form.email.trim() || null,
         instagram: form.instagram.trim() || null,
@@ -336,13 +348,32 @@ export default function EditarContactoPage() {
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-[#1F1F1F]">
-                WhatsApp
+                WhatsApp número
               </label>
               <input
                 value={form.whatsapp}
                 onChange={(e) => actualizarCampo("whatsapp", e.target.value)}
                 className="w-full rounded-xl border border-[#E5E2DA] bg-[#F7F6F2] px-4 py-3 text-sm outline-none focus:border-[#737563] focus:bg-white"
+                placeholder="+51 999 999 999"
               />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-[#1F1F1F]">
+                Usuario WhatsApp
+              </label>
+              <input
+                value={form.whatsapp_usuario}
+                onChange={(e) =>
+                  actualizarCampo("whatsapp_usuario", e.target.value)
+                }
+                className="w-full rounded-xl border border-[#E5E2DA] bg-[#F7F6F2] px-4 py-3 text-sm outline-none focus:border-[#737563] focus:bg-white"
+                placeholder="@usuario"
+              />
+              <p className="mt-2 text-xs text-[#737563]">
+                Úsalo cuando el contacto no tenga número visible, pero sí tenga
+                usuario de WhatsApp.
+              </p>
             </div>
 
             <div>
