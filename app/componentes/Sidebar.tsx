@@ -21,6 +21,8 @@ import {
   ListChecks,
   ArchiveRestore,
   BarChart3,
+  Clock,
+  MessageSquareText,
 } from "lucide-react"
 
 export type SidebarPerfil = {
@@ -169,6 +171,16 @@ export default function Sidebar({
           label: "Dashboard CRM",
           href: "/crm",
           icon: <LayoutDashboard size={18} />,
+        },
+        {
+          label: "Seguimiento",
+          href: "/crm/seguimiento",
+          icon: <Clock size={18} />,
+        },
+        {
+          label: "Plantillas",
+          href: "/crm/plantillas",
+          icon: <MessageSquareText size={18} />,
         },
         {
           label: "Contactos",

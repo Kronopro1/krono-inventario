@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Clock,
   Snowflake,
+  MessageSquareText,
 } from "lucide-react"
 import { supabase } from "@/src/lib/supabase"
 
@@ -202,6 +203,13 @@ export default function CrmDashboardPage() {
             Seguimiento
             </Link>
             <Link
+            href="/crm/plantillas"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+            >
+            <MessageSquareText size={18} />
+            Plantillas
+            </Link>
+            <Link
               href="/crm/tareas"
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
@@ -241,7 +249,7 @@ export default function CrmDashboardPage() {
           </div>
         )}
 
-        <section className="mb-8 grid gap-4 md:grid-cols-5">
+        <section className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-6">
           <Link
             href="/crm/tareas"
             className="rounded-2xl border border-red-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-red-400"
@@ -279,6 +287,25 @@ export default function CrmDashboardPage() {
               Ver agenda →
             </p>
           </Link>
+
+          <Link
+          href="/crm/plantillas"
+          className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#737563]"
+          >
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F7F6F2] text-[#737563]">
+          <MessageSquareText size={22} />
+          </div>
+
+          <p className="text-sm text-[#737563]">Plantillas</p>
+
+          <h2 className="mt-2 text-lg font-semibold text-[#1F1F1F]">
+          Flujo comercial
+          </h2>
+
+          <p className="mt-2 text-xs font-semibold text-[#737563]">
+            Ver mensajes →
+          </p>
+        </Link>
 
           <Link
             href="/crm/pipeline"
@@ -338,7 +365,7 @@ export default function CrmDashboardPage() {
           </Link>
         </section>
 
-        <section className="mb-8 grid gap-4 md:grid-cols-4">
+        <section className="mb-8 grid gap-4 md:grid-cols-5">
           <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
             <p className="text-sm text-[#737563]">Clientes activos</p>
             <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
