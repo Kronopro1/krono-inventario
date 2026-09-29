@@ -195,6 +195,13 @@ export default function CrmDashboardPage() {
 
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link
+            href="/crm/seguimiento"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+            >
+            <Clock size={18} />
+            Seguimiento
+            </Link>
+            <Link
               href="/crm/tareas"
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
@@ -293,7 +300,7 @@ export default function CrmDashboardPage() {
           </Link>
 
           <Link
-            href="/crm/contactos"
+            href="/crm/seguimiento"
             className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400"
           >
             <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
