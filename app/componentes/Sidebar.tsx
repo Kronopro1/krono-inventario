@@ -45,8 +45,8 @@ type SidebarProps = {
   puedeVender: boolean
   puedeVerMovimientos: boolean
   puedeVerConfiguracion: boolean
-  puedeVerReportes: boolean
-  puedeVerCRM: boolean
+  puedeVerReportes?: boolean
+  puedeVerCRM?: boolean
   onClose: () => void
   onLogout: () => void
 }
@@ -137,8 +137,8 @@ export default function Sidebar({
   puedeVender,
   puedeVerMovimientos,
   puedeVerConfiguracion,
-  puedeVerReportes,
-  puedeVerCRM,
+  puedeVerReportes = false,
+  puedeVerCRM = true,
   onClose,
   onLogout,
 }: SidebarProps) {
