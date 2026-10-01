@@ -18,6 +18,8 @@ import {
   RefreshCcw,
   Snowflake,
   BadgeDollarSign,
+  Send,
+  MessageSquareText,
 } from "lucide-react"
 import { supabase } from "@/src/lib/supabase"
 
@@ -50,6 +52,12 @@ type ColumnaBoard = {
   contactos: CrmContacto[]
 }
 
+type PlantillaRapida = {
+  id: string
+  titulo: string
+  mensaje: string
+}
+
 const LIMITE_POR_COLUMNA = 20
 
 const etapasComerciales = [
@@ -73,6 +81,57 @@ const etapasComerciales = [
   "Perdido",
 ]
 
+const plantillasRapidas: PlantillaRapida[] = [
+  {
+    id: "primer-contacto",
+    titulo: "Primer contacto",
+    mensaje:
+      "Hola 👋\n\nEstamos seleccionando un grupo reducido de salones para una nueva línea profesional de reparación capilar que llega desde Vancouver, Canadá.\n\nNo buscamos venta masiva. Queremos trabajar con salones que puedan convertirse en aliados pioneros en esta primera etapa.\n\n¿Te gustaría conocer cómo funciona el programa?",
+  },
+  {
+    id: "si-responde",
+    titulo: "Si responde “sí / cuéntame”",
+    mensaje:
+      "Perfecto 🙌\n\nLa idea es formar un primer grupo de salones aliados: profesionales que puedan conocer la línea desde su etapa inicial y acceder a condiciones preferenciales, capacitación y futuras oportunidades de colaboración.\n\nAntes de enviarte la información completa, para entender mejor tu perfil:\n\n¿Trabajan principalmente con color, decoloración o reparación capilar?",
+  },
+  {
+    id: "conectar-necesidad",
+    titulo: "Conectar necesidad",
+    mensaje:
+      "Entonces hay bastante afinidad con lo que estamos desarrollando.\n\nLa línea está enfocada en cabello tratado y exigente, especialmente después de coloraciones, decoloraciones, calor y procesos químicos.\n\nLa idea no es que cambies de inmediato lo que ya usas, sino que puedas conocer la rutina, probarla y evaluar el resultado desde tu experiencia profesional.\n\n¿Te gustaría conocer el kit profesional y las condiciones del programa?",
+  },
+  {
+    id: "beneficios",
+    titulo: "Presentar beneficios",
+    mensaje:
+      "Como parte del grupo inicial de salones aliados, podrías acceder a:\n\n• Condiciones profesionales preferenciales\n• Beneficios especiales de lanzamiento\n• Capacitación y material técnico\n• Acceso anticipado a nuevos productos\n• Material de apoyo para el salón\n• Oportunidades de colaboración con la marca\n\nLa idea es crecer junto a los primeros salones que realmente conecten con la propuesta.",
+  },
+  {
+    id: "invitacion-prueba",
+    titulo: "Invitación a prueba",
+    mensaje:
+      "No buscamos que cambies de inmediato la marca con la que ya trabajas.\n\nLo que buscamos es que pruebes la rutina, evalúes el resultado en tu salón y decidas desde tu experiencia profesional.\n\nSi te parece, te puedo enviar las opciones del kit de introducción para esta primera etapa.",
+  },
+  {
+    id: "seguimiento-2-4",
+    titulo: "Seguimiento 2–4 días",
+    mensaje:
+      "Hola 👋\n\nTe dejo algo que quizá te resulte interesante.\n\nLa línea nace pensando en el cabello que hoy recibe más exigencia: color, decoloración, calor y procesos químicos.\n\nSi te interesa conocer la rutina profesional y cómo estamos trabajando con los primeros salones aliados, con gusto te explico el programa.",
+  },
+  {
+    id: "seguimiento-7-10",
+    titulo: "Seguimiento 7–10 días",
+    mensaje:
+      "Hola nuevamente 👋\n\nEstamos cerrando esta primera etapa de incorporación de salones aliados y recordé nuestra conversación.\n\nSi todavía te interesa conocer la línea, puedo enviarte las condiciones profesionales de introducción.\n\nSi ahora no es el momento, ningún problema 😊",
+  },
+  {
+    id: "objecion-precio",
+    titulo: "Objeción precio",
+    mensaje:
+      "Claro.\n\nTenemos un programa de condiciones preferenciales para salones aliados, diferente al precio regular.\n\nLa idea es beneficiar especialmente a quienes entren en esta primera etapa.\n\nTe puedo enviar las opciones profesionales disponibles, pero antes dime: ¿lo usarías principalmente para servicio en salón, reventa o ambos?",
+  },
+]
+
 export default function BoardCRMPage() {
   const [contactos, setContactos] = useState<CrmContacto[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,6 +139,12 @@ export default function BoardCRMPage() {
   const [busqueda, setBusqueda] = useState("")
   const [mensaje, setMensaje] = useState("")
   const [actualizandoId, setActualizandoId] = useState<string | null>(null)
+  const [enviandoPlantillaId, setEnviandoPlantillaId] = useState<string | null>(
+    null
+  )
+  const [plantillaPorContacto, setPlantillaPorContacto] = useState<
+    Record<string, string>
+  >({})
 
   useEffect(() => {
     cargarContactos()
@@ -146,6 +211,28 @@ export default function BoardCRMPage() {
     return Math.floor(diferencia / (1000 * 60 * 60 * 24))
   }
 
+  const obtenerPlantillaContacto = (contactoId: string) => {
+    const plantillaId = plantillaPorContacto[contactoId] || plantillasRapidas[0].id
+
+    return (
+      plantillasRapidas.find((plantilla) => plantilla.id === plantillaId) ||
+      plantillasRapidas[0]
+    )
+  }
+
+  const cambiarPlantillaContacto = (contactoId: string, plantillaId: string) => {
+    setPlantillaPorContacto((prev) => ({
+      ...prev,
+      [contactoId]: plantillaId,
+    }))
+  }
+
+  const limpiarMensajeTemporal = () => {
+    setTimeout(() => {
+      setMensaje("")
+    }, 3500)
+  }
+
   const copiarUsuario = async (usuario: string | null) => {
     const usuarioLimpio = limpiarUsuarioWhatsapp(usuario)
 
@@ -158,9 +245,7 @@ export default function BoardCRMPage() {
       setMensaje(`Copia manualmente este usuario: ${usuarioLimpio}`)
     }
 
-    setTimeout(() => {
-      setMensaje("")
-    }, 3500)
+    limpiarMensajeTemporal()
   }
 
   const actualizarEstadoContacto = async (
@@ -209,12 +294,73 @@ export default function BoardCRMPage() {
     )
 
     setMensaje(`Etapa actualizada: ${nuevoEstado}`)
-
-    setTimeout(() => {
-      setMensaje("")
-    }, 3000)
-
+    limpiarMensajeTemporal()
     setActualizandoId(null)
+  }
+
+  const usarPlantillaWhatsApp = async (contacto: CrmContacto) => {
+    const plantilla = obtenerPlantillaContacto(contacto.id)
+    const whatsapp = limpiarWhatsapp(contacto.whatsapp)
+    const usuarioWhatsapp = limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
+    const fechaActual = new Date().toISOString()
+
+    setEnviandoPlantillaId(contacto.id)
+    setError("")
+    setMensaje("")
+
+    await supabase.from("crm_actividades").insert({
+      contacto_id: contacto.id,
+      tipo: "WhatsApp",
+      titulo: `Plantilla usada desde Board: ${plantilla.titulo}`,
+      descripcion: plantilla.mensaje,
+    })
+
+    await supabase
+      .from("crm_contactos")
+      .update({
+        ultima_interaccion: fechaActual,
+      })
+      .eq("id", contacto.id)
+
+    setContactos((prev) =>
+      prev.map((item) =>
+        item.id === contacto.id
+          ? {
+              ...item,
+              ultima_interaccion: fechaActual,
+            }
+          : item
+      )
+    )
+
+    if (whatsapp) {
+      const mensajeCodificado = encodeURIComponent(plantilla.mensaje)
+      window.open(`https://wa.me/${whatsapp}?text=${mensajeCodificado}`, "_blank")
+      setMensaje(`Plantilla abierta: ${plantilla.titulo}`)
+      limpiarMensajeTemporal()
+      setEnviandoPlantillaId(null)
+      return
+    }
+
+    if (usuarioWhatsapp) {
+      try {
+        await navigator.clipboard.writeText(usuarioWhatsapp)
+        setMensaje(
+          `Este contacto no tiene número. Se copió el usuario ${usuarioWhatsapp} para buscarlo en WhatsApp.`
+        )
+      } catch {
+        setMensaje(
+          `Copia manualmente este usuario en WhatsApp: ${usuarioWhatsapp}`
+        )
+      }
+
+      limpiarMensajeTemporal()
+      setEnviandoPlantillaId(null)
+      return
+    }
+
+    setError("Este contacto no tiene número ni usuario de WhatsApp registrado.")
+    setEnviandoPlantillaId(null)
   }
 
   const contactosFiltrados = useMemo(() => {
@@ -240,7 +386,7 @@ export default function BoardCRMPage() {
     })
   }, [contactos, busqueda])
 
-  const columnas = useMemo<ColumnaBoard[]>(() => {
+  const columnas = useMemo<ColumnaBoard[]>((() => {
     const hoy = fechaHoy()
 
     const seguimientoHoy = contactosFiltrados.filter(
@@ -342,7 +488,7 @@ export default function BoardCRMPage() {
         contactos: clientesRecompra,
       },
     ]
-  }, [contactosFiltrados])
+  }) as () => ColumnaBoard[], [contactosFiltrados])
 
   const totalVisibles = contactosFiltrados.length
 
@@ -501,7 +647,7 @@ export default function BoardCRMPage() {
               return (
                 <div
                   key={columna.id}
-                  className="flex w-[340px] shrink-0 flex-col rounded-3xl border border-[#E5E2DA] bg-white shadow-sm"
+                  className="flex w-[360px] shrink-0 flex-col rounded-3xl border border-[#E5E2DA] bg-white shadow-sm"
                 >
                   <div className="sticky top-0 z-10 rounded-t-3xl border-b border-[#E5E2DA] bg-white p-4">
                     <div className="mb-3 flex items-start justify-between gap-3">
@@ -555,16 +701,18 @@ export default function BoardCRMPage() {
                           contacto.whatsapp_usuario
                         )
 
-                        const whatsappLink = whatsappLimpio
-                          ? `https://wa.me/${whatsappLimpio}`
-                          : "#"
-
                         const diasSinInteraccion = diasDesde(
                           contacto.ultima_interaccion || contacto.created_at
                         )
 
                         const estaActualizando =
                           actualizandoId === contacto.id
+
+                        const estaEnviandoPlantilla =
+                          enviandoPlantillaId === contacto.id
+
+                        const plantillaSeleccionada =
+                          obtenerPlantillaContacto(contacto.id)
 
                         return (
                           <div
@@ -632,6 +780,49 @@ export default function BoardCRMPage() {
                               </div>
 
                               <div className="rounded-xl bg-white p-3">
+                                <label className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#737563]">
+                                  <MessageSquareText size={13} />
+                                  Plantilla rápida
+                                </label>
+
+                                <select
+                                  value={plantillaSeleccionada.id}
+                                  onChange={(e) =>
+                                    cambiarPlantillaContacto(
+                                      contacto.id,
+                                      e.target.value
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-[#E5E2DA] bg-[#F7F6F2] px-3 py-2 text-xs font-semibold text-[#1F1F1F] outline-none transition focus:border-[#737563] focus:bg-white"
+                                >
+                                  {plantillasRapidas.map((plantilla) => (
+                                    <option
+                                      key={plantilla.id}
+                                      value={plantilla.id}
+                                    >
+                                      {plantilla.titulo}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <button
+                                  type="button"
+                                  onClick={() => usarPlantillaWhatsApp(contacto)}
+                                  disabled={estaEnviandoPlantilla}
+                                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#1F1F1F] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#737563] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <Send size={14} />
+                                  {estaEnviandoPlantilla
+                                    ? "Preparando..."
+                                    : whatsappLimpio
+                                      ? "Abrir plantilla"
+                                      : usuarioWhatsapp
+                                        ? "Copiar usuario"
+                                        : "Sin WhatsApp"}
+                                </button>
+                              </div>
+
+                              <div className="rounded-xl bg-white p-3">
                                 <p className="font-semibold text-[#737563]">
                                   Contacto
                                 </p>
@@ -696,7 +887,7 @@ export default function BoardCRMPage() {
 
                               {whatsappLimpio ? (
                                 <a
-                                  href={whatsappLink}
+                                  href={`https://wa.me/${whatsappLimpio}`}
                                   target="_blank"
                                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-green-700"
                                 >
