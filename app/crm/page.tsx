@@ -14,6 +14,7 @@ import {
   Clock,
   Snowflake,
   MessageSquareText,
+  LayoutPanelTop,
 } from "lucide-react"
 import { supabase } from "@/src/lib/supabase"
 
@@ -203,6 +204,13 @@ export default function CrmDashboardPage() {
             Seguimiento
             </Link>
             <Link
+            href="/crm/board"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+            >
+            <LayoutPanelTop size={18} />
+            Board
+            </Link>
+            <Link
             href="/crm/plantillas"
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
@@ -249,7 +257,7 @@ export default function CrmDashboardPage() {
           </div>
         )}
 
-        <section className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+        <section className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-7">
           <Link
             href="/crm/tareas"
             className="rounded-2xl border border-red-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-red-400"
@@ -305,6 +313,25 @@ export default function CrmDashboardPage() {
           <p className="mt-2 text-xs font-semibold text-[#737563]">
             Ver mensajes →
           </p>
+        </Link>
+
+        <Link
+        href="/crm/board"
+        className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#737563]"
+        >
+        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F7F6F2] text-[#737563]">
+        <LayoutPanelTop size={22} />
+        </div>
+
+        <p className="text-sm text-[#737563]">Board Comercial</p>
+
+        <h2 className="mt-2 text-lg font-semibold text-[#1F1F1F]">
+          Vista inteligente
+        </h2>
+          
+        <p className="mt-2 text-xs font-semibold text-[#737563]">
+        Ver board →
+        </p>
         </Link>
 
           <Link

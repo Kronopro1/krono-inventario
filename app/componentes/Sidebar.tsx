@@ -23,6 +23,7 @@ import {
   BarChart3,
   Clock,
   MessageSquareText,
+  LayoutPanelTop,
 } from "lucide-react"
 
 export type SidebarPerfil = {
@@ -167,42 +168,47 @@ export default function Sidebar({
     : []
 
   const crm: SidebarLink[] = [
-        {
-          label: "Dashboard CRM",
-          href: "/crm",
-          icon: <LayoutDashboard size={18} />,
-        },
-        {
-          label: "Seguimiento",
-          href: "/crm/seguimiento",
-          icon: <Clock size={18} />,
-        },
-        {
-          label: "Plantillas",
-          href: "/crm/plantillas",
-          icon: <MessageSquareText size={18} />,
-        },
-        {
-          label: "Contactos",
-          href: "/crm/contactos",
-          icon: <ContactRound size={18} />,
-        },
-        {
-          label: "Pipeline",
-          href: "/crm/pipeline",
-          icon: <KanbanSquare size={18} />,
-        },
-        {
-          label: "Tareas",
-          href: "/crm/tareas",
-          icon: <ListChecks size={18} />,
-        },
-        {
-          label: "Desactivados",
-          href: "/crm/contactos/desactivados",
-          icon: <ArchiveRestore size={18} />,
-        },
-      ]
+    {
+    label: "Dashboard CRM",
+    href: "/crm",
+    icon: <LayoutDashboard size={18} />,
+    },
+    {
+    label: "Board Comercial",
+    href: "/crm/board",
+    icon: <LayoutPanelTop size={18} />,
+    },
+    {
+    label: "Seguimiento",
+    href: "/crm/seguimiento",
+    icon: <Clock size={18} />,
+    },
+    {
+    label: "Plantillas",
+    href: "/crm/plantillas",
+    icon: <MessageSquareText size={18} />,
+    },
+    {
+    label: "Contactos",
+    href: "/crm/contactos",
+    icon: <ContactRound size={18} />,
+    },
+    {
+    label: "Pipeline",
+    href: "/crm/pipeline",
+    icon: <KanbanSquare size={18} />,
+    },
+    {
+    label: "Tareas",
+    href: "/crm/tareas",
+    icon: <ListChecks size={18} />,
+    },
+    {
+    label: "Desactivados",
+    href: "/crm/contactos/desactivados",
+    icon: <ArchiveRestore size={18} />,
+    },
+  ]
 
   const inventario: SidebarLink[] = []
 
