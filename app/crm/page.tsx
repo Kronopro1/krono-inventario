@@ -15,17 +15,39 @@ import {
   Snowflake,
   MessageSquareText,
   LayoutPanelTop,
+  FileWarning,
+  UserCheck,
+  Target,
 } from "lucide-react"
 import { supabase } from "@/src/lib/supabase"
 
+type Rol = "admin" | "operador" | "consulta" | "vendedor"
+
+type Perfil = {
+  nombre: string
+  email: string
+  rol: Rol
+  activo: boolean
+}
+
 type CrmContacto = {
   id: string
+  codigo_contacto: string | null
   nombre: string
   apellido: string | null
   empresa_salon: string | null
+  razon_social: string | null
+  nombre_comercial: string | null
+  tipo_documento: string | null
+  numero_documento: string | null
   tipo_contacto: string
   estado_comercial: string
+  asesor_asignado: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
+  creado_por: string | null
   whatsapp: string | null
+  whatsapp_usuario: string | null
   email: string | null
   ciudad: string | null
   valor_potencial: number | string | null
@@ -43,6 +65,9 @@ type CrmTarea = {
   fecha_tarea: string | null
   hora_tarea: string | null
   prioridad: string | null
+  creado_por: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
 }
 
 function fechaLocalISO() {
@@ -64,22 +89,68 @@ function diasDesde(fecha: string | null) {
   return Math.floor(diferencia / (1000 * 60 * 60 * 24))
 }
 
+function nombreContacto(contacto: CrmContacto) {
+  return `${contacto.nombre} ${contacto.apellido || ""}`.trim()
+}
+
+function empresaVisible(contacto: CrmContacto) {
+  return (
+    contacto.empresa_salon ||
+    contacto.nombre_comercial ||
+    contacto.razon_social ||
+    "Sin empresa"
+  )
+}
+
 export default function CrmDashboardPage() {
   const [contactos, setContactos] = useState<CrmContacto[]>([])
   const [tareas, setTareas] = useState<CrmTarea[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [perfil, setPerfil] = useState<Perfil | null>(null)
 
   useEffect(() => {
     async function cargarDatos() {
       setLoading(true)
       setError("")
 
-      const { data: contactosData, error: contactosError } = await supabase
+      const { data: sessionData } = await supabase.auth.getSession()
+      const session = sessionData.session
+
+      if (!session?.user?.email) {
+        setError("No se encontró una sesión activa.")
+        setLoading(false)
+        return
+      }
+
+      const { data: perfilData, error: perfilError } = await supabase
+        .from("perfiles")
+        .select("nombre, email, rol, activo")
+        .eq("email", session.user.email)
+        .single()
+
+      if (perfilError || !perfilData) {
+        setError("No se pudo cargar el perfil del usuario.")
+        setLoading(false)
+        return
+      }
+
+      const perfilUsuario = perfilData as Perfil
+      setPerfil(perfilUsuario)
+
+      let contactosQuery = supabase
         .from("crm_contactos")
         .select("*")
         .eq("activo", true)
         .order("created_at", { ascending: false })
+
+      if (perfilUsuario.rol === "vendedor") {
+        contactosQuery = contactosQuery.or(
+          `creado_por.eq.${session.user.id},asesor_asignado_id.eq.${session.user.id}`
+        )
+      }
+
+      const { data: contactosData, error: contactosError } = await contactosQuery
 
       if (contactosError) {
         setError(contactosError.message)
@@ -87,10 +158,28 @@ export default function CrmDashboardPage() {
         return
       }
 
-      const { data: tareasData, error: tareasError } = await supabase
+      const contactosPermitidos = (contactosData || []) as CrmContacto[]
+      const contactosIdsPermitidos = contactosPermitidos.map(
+        (contacto) => contacto.id
+      )
+
+      let tareasQuery = supabase
         .from("crm_tareas")
         .select("*")
         .order("fecha_tarea", { ascending: true })
+
+      if (perfilUsuario.rol === "vendedor") {
+        if (contactosIdsPermitidos.length === 0) {
+          setContactos([])
+          setTareas([])
+          setLoading(false)
+          return
+        }
+
+        tareasQuery = tareasQuery.in("contacto_id", contactosIdsPermitidos)
+      }
+
+      const { data: tareasData, error: tareasError } = await tareasQuery
 
       if (tareasError) {
         setError(tareasError.message)
@@ -98,7 +187,7 @@ export default function CrmDashboardPage() {
         return
       }
 
-      setContactos((contactosData || []) as CrmContacto[])
+      setContactos(contactosPermitidos)
       setTareas((tareasData || []) as CrmTarea[])
       setLoading(false)
     }
@@ -107,6 +196,7 @@ export default function CrmDashboardPage() {
   }, [])
 
   const hoy = fechaLocalISO()
+  const esVendedor = perfil?.rol === "vendedor"
 
   const tareasPendientes = useMemo(() => {
     return tareas.filter((tarea) => tarea.estado !== "Completado")
@@ -168,6 +258,26 @@ export default function CrmDashboardPage() {
     )
   }, [contactos])
 
+  const contactosSinDocumento = useMemo(() => {
+    return contactos.filter((contacto) => !contacto.numero_documento)
+  }, [contactos])
+
+  const contactosSinAsesor = useMemo(() => {
+    return contactos.filter(
+      (contacto) =>
+        !contacto.asesor_asignado_id &&
+        !contacto.asesor_asignado_nombre &&
+        (!contacto.asesor_asignado ||
+          contacto.asesor_asignado === "Sin asignar")
+    )
+  }, [contactos])
+
+  const contactosSinProximaAccion = useMemo(() => {
+    return contactos.filter(
+      (contacto) => !contacto.proxima_accion && !contacto.fecha_proxima_accion
+    )
+  }, [contactos])
+
   const valorPipeline = useMemo(() => {
     return contactos.reduce((total, contacto) => {
       return total + Number(contacto.valor_potencial || 0)
@@ -175,6 +285,7 @@ export default function CrmDashboardPage() {
   }, [contactos])
 
   const contactosRecientes = contactos.slice(0, 6)
+  const prioridadHoy = [...tareasVencidas, ...tareasHoy].slice(0, 6)
 
   return (
     <main className="min-h-screen bg-[#F7F6F2] p-6">
@@ -186,43 +297,47 @@ export default function CrmDashboardPage() {
             </p>
 
             <h1 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
-              CRM Comercial
+              {esVendedor ? "Mi CRM Comercial" : "CRM Comercial"}
             </h1>
 
             <p className="mt-2 max-w-2xl text-sm text-[#4A4A4A]">
-              Seguimiento comercial diario para prospectos, salones,
-              estilistas, distribuidores y clientes KRONO PRO.
+              {esVendedor
+                ? "Centro de seguimiento para tus contactos, tareas y oportunidades asignadas."
+                : "Centro de control comercial para prospectos, salones, estilistas, distribuidores y clientes KRONO PRO."}
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap md:justify-end">
             <Link
-            href="/crm/seguimiento"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+              href="/crm/seguimiento"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
-            <Clock size={18} />
-            Seguimiento
+              <Clock size={18} />
+              Seguimiento
             </Link>
+
             <Link
-            href="/crm/board"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+              href="/crm/board"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
-            <LayoutPanelTop size={18} />
-            Board
+              <LayoutPanelTop size={18} />
+              Board
             </Link>
+
             <Link
-            href="/crm/plantillas"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+              href="/crm/plantillas"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
-            <MessageSquareText size={18} />
-            Plantillas
+              <MessageSquareText size={18} />
+              Plantillas
             </Link>
+
             <Link
               href="/crm/tareas"
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
               <ListChecks size={18} />
-              Ver tareas
+              Tareas
             </Link>
 
             <Link
@@ -230,16 +345,18 @@ export default function CrmDashboardPage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
               <KanbanSquare size={18} />
-              Ver pipeline
+              Pipeline
             </Link>
 
-            <Link
-              href="/crm/contactos/desactivados"
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
-            >
-              <ArchiveRestore size={18} />
-              Desactivados
-            </Link>
+            {!esVendedor && (
+              <Link
+                href="/crm/contactos/desactivados"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+              >
+                <ArchiveRestore size={18} />
+                Desactivados
+              </Link>
+            )}
 
             <Link
               href="/crm/contactos/nuevo"
@@ -254,6 +371,13 @@ export default function CrmDashboardPage() {
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-white p-4 text-sm text-red-600">
             {error}
+          </div>
+        )}
+
+        {esVendedor && (
+          <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-700">
+            Estás viendo únicamente los contactos y tareas creados por ti o
+            asignados a tu usuario.
           </div>
         )}
 
@@ -297,44 +421,6 @@ export default function CrmDashboardPage() {
           </Link>
 
           <Link
-          href="/crm/plantillas"
-          className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#737563]"
-          >
-          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F7F6F2] text-[#737563]">
-          <MessageSquareText size={22} />
-          </div>
-
-          <p className="text-sm text-[#737563]">Plantillas</p>
-
-          <h2 className="mt-2 text-lg font-semibold text-[#1F1F1F]">
-          Flujo comercial
-          </h2>
-
-          <p className="mt-2 text-xs font-semibold text-[#737563]">
-            Ver mensajes →
-          </p>
-        </Link>
-
-        <Link
-        href="/crm/board"
-        className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#737563]"
-        >
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F7F6F2] text-[#737563]">
-        <LayoutPanelTop size={22} />
-        </div>
-
-        <p className="text-sm text-[#737563]">Board Comercial</p>
-
-        <h2 className="mt-2 text-lg font-semibold text-[#1F1F1F]">
-          Vista inteligente
-        </h2>
-          
-        <p className="mt-2 text-xs font-semibold text-[#737563]">
-        Ver board →
-        </p>
-        </Link>
-
-          <Link
             href="/crm/pipeline"
             className="rounded-2xl border border-orange-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-400"
           >
@@ -374,13 +460,55 @@ export default function CrmDashboardPage() {
 
           <Link
             href="/crm/contactos"
+            className="rounded-2xl border border-yellow-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-yellow-400"
+          >
+            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-yellow-50 text-yellow-700">
+              <FileWarning size={22} />
+            </div>
+
+            <p className="text-sm text-[#737563]">Sin documento</p>
+
+            <h2 className="mt-2 text-3xl font-semibold text-yellow-700">
+              {loading ? "..." : contactosSinDocumento.length}
+            </h2>
+
+            <p className="mt-2 text-xs font-semibold text-yellow-700">
+              Completar datos →
+            </p>
+          </Link>
+
+          {!esVendedor && (
+            <Link
+              href="/crm/contactos"
+              className="rounded-2xl border border-purple-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-purple-400"
+            >
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-purple-50 text-purple-700">
+                <UserCheck size={22} />
+              </div>
+
+              <p className="text-sm text-[#737563]">Sin asesor</p>
+
+              <h2 className="mt-2 text-3xl font-semibold text-purple-700">
+                {loading ? "..." : contactosSinAsesor.length}
+              </h2>
+
+              <p className="mt-2 text-xs font-semibold text-purple-700">
+                Asignar responsable →
+              </p>
+            </Link>
+          )}
+
+          <Link
+            href="/crm/contactos"
             className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#737563]"
           >
             <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-[#F7F6F2] text-[#737563]">
               <Users size={22} />
             </div>
 
-            <p className="text-sm text-[#737563]">Contactos activos</p>
+            <p className="text-sm text-[#737563]">
+              {esVendedor ? "Mis contactos" : "Contactos activos"}
+            </p>
 
             <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
               {loading ? "..." : contactos.length}
@@ -404,6 +532,13 @@ export default function CrmDashboardPage() {
             <p className="text-sm text-[#737563]">Tareas próximas</p>
             <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
               {loading ? "..." : tareasProximas.length}
+            </h2>
+          </div>
+
+          <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
+            <p className="text-sm text-[#737563]">Sin próxima acción</p>
+            <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
+              {loading ? "..." : contactosSinProximaAccion.length}
             </h2>
           </div>
 
@@ -435,7 +570,7 @@ export default function CrmDashboardPage() {
             </div>
 
             <div className="space-y-3">
-              {[...tareasVencidas, ...tareasHoy].slice(0, 6).map((tarea) => (
+              {prioridadHoy.map((tarea) => (
                 <div
                   key={tarea.id}
                   className="rounded-xl border border-[#E5E2DA] bg-[#F7F6F2] p-4"
@@ -450,6 +585,12 @@ export default function CrmDashboardPage() {
                         {tarea.fecha_tarea || "Sin fecha"}{" "}
                         {tarea.hora_tarea ? `· ${tarea.hora_tarea}` : ""}
                       </p>
+
+                      {tarea.asesor_asignado_nombre && (
+                        <p className="mt-1 text-xs text-blue-700">
+                          Asesor: {tarea.asesor_asignado_nombre}
+                        </p>
+                      )}
                     </div>
 
                     <span
@@ -467,7 +608,7 @@ export default function CrmDashboardPage() {
                 </div>
               ))}
 
-              {[...tareasVencidas, ...tareasHoy].length === 0 && (
+              {prioridadHoy.length === 0 && (
                 <div className="rounded-xl bg-[#F7F6F2] p-5 text-sm text-[#737563]">
                   No tienes tareas vencidas ni seguimientos para hoy.
                 </div>
@@ -496,12 +637,12 @@ export default function CrmDashboardPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold text-[#1F1F1F]">
-                        {contacto.nombre} {contacto.apellido || ""}
+                        {nombreContacto(contacto)}
                       </p>
 
                       <p className="mt-1 text-xs text-[#737563]">
-                        {contacto.empresa_salon || "Sin empresa"} ·{" "}
-                        {contacto.estado_comercial}
+                        {contacto.codigo_contacto || "Sin código"} ·{" "}
+                        {empresaVisible(contacto)} · {contacto.estado_comercial}
                       </p>
                     </div>
 
@@ -519,6 +660,121 @@ export default function CrmDashboardPage() {
               )}
             </div>
           </div>
+        </section>
+
+        <section className="mb-8 grid gap-6 lg:grid-cols-3">
+          <div className="rounded-2xl border border-[#E5E2DA] bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center gap-3">
+              <FileWarning className="text-yellow-700" size={22} />
+              <div>
+                <h2 className="text-xl font-semibold text-[#1F1F1F]">
+                  Faltan documentos
+                </h2>
+                <p className="mt-1 text-sm text-[#737563]">
+                  Contactos sin RUC, DNI, C.E. u otro documento.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {contactosSinDocumento.slice(0, 5).map((contacto) => (
+                <Link
+                  key={contacto.id}
+                  href={`/crm/contactos/${contacto.id}`}
+                  className="block rounded-xl bg-[#F7F6F2] p-4 text-sm transition hover:bg-white hover:ring-1 hover:ring-[#E5E2DA]"
+                >
+                  <p className="font-semibold text-[#1F1F1F]">
+                    {nombreContacto(contacto)}
+                  </p>
+                  <p className="mt-1 text-xs text-[#737563]">
+                    {empresaVisible(contacto)}
+                  </p>
+                </Link>
+              ))}
+
+              {contactosSinDocumento.length === 0 && (
+                <p className="rounded-xl bg-[#F7F6F2] p-4 text-sm text-[#737563]">
+                  Todos los contactos tienen documento registrado.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E5E2DA] bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center gap-3">
+              <Target className="text-[#737563]" size={22} />
+              <div>
+                <h2 className="text-xl font-semibold text-[#1F1F1F]">
+                  Sin próxima acción
+                </h2>
+                <p className="mt-1 text-sm text-[#737563]">
+                  Contactos sin tarea o próximo paso claro.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {contactosSinProximaAccion.slice(0, 5).map((contacto) => (
+                <Link
+                  key={contacto.id}
+                  href={`/crm/contactos/${contacto.id}`}
+                  className="block rounded-xl bg-[#F7F6F2] p-4 text-sm transition hover:bg-white hover:ring-1 hover:ring-[#E5E2DA]"
+                >
+                  <p className="font-semibold text-[#1F1F1F]">
+                    {nombreContacto(contacto)}
+                  </p>
+                  <p className="mt-1 text-xs text-[#737563]">
+                    {empresaVisible(contacto)} · {contacto.estado_comercial}
+                  </p>
+                </Link>
+              ))}
+
+              {contactosSinProximaAccion.length === 0 && (
+                <p className="rounded-xl bg-[#F7F6F2] p-4 text-sm text-[#737563]">
+                  Todos los contactos tienen una próxima acción registrada.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {!esVendedor && (
+            <div className="rounded-2xl border border-[#E5E2DA] bg-white p-6 shadow-sm">
+              <div className="mb-5 flex items-center gap-3">
+                <UserCheck className="text-purple-700" size={22} />
+                <div>
+                  <h2 className="text-xl font-semibold text-[#1F1F1F]">
+                    Sin asesor asignado
+                  </h2>
+                  <p className="mt-1 text-sm text-[#737563]">
+                    Leads que necesitan responsable comercial.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {contactosSinAsesor.slice(0, 5).map((contacto) => (
+                  <Link
+                    key={contacto.id}
+                    href={`/crm/contactos/${contacto.id}`}
+                    className="block rounded-xl bg-[#F7F6F2] p-4 text-sm transition hover:bg-white hover:ring-1 hover:ring-[#E5E2DA]"
+                  >
+                    <p className="font-semibold text-[#1F1F1F]">
+                      {nombreContacto(contacto)}
+                    </p>
+                    <p className="mt-1 text-xs text-[#737563]">
+                      {empresaVisible(contacto)} · {contacto.estado_comercial}
+                    </p>
+                  </Link>
+                ))}
+
+                {contactosSinAsesor.length === 0 && (
+                  <p className="rounded-xl bg-[#F7F6F2] p-4 text-sm text-[#737563]">
+                    Todos los contactos tienen asesor asignado.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="rounded-2xl border border-[#E5E2DA] bg-white p-6 shadow-sm">
@@ -542,11 +798,12 @@ export default function CrmDashboardPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] border-collapse">
+            <table className="w-full min-w-[1000px] border-collapse">
               <thead>
                 <tr className="border-b border-[#E5E2DA] text-left text-xs uppercase tracking-[0.12em] text-[#737563]">
+                  <th className="py-3 pr-4 font-semibold">Código</th>
                   <th className="py-3 pr-4 font-semibold">Contacto</th>
-                  <th className="py-3 pr-4 font-semibold">Empresa / Salón</th>
+                  <th className="py-3 pr-4 font-semibold">Empresa / Comercial</th>
                   <th className="py-3 pr-4 font-semibold">Tipo</th>
                   <th className="py-3 pr-4 font-semibold">Estado</th>
                   <th className="py-3 pr-4 font-semibold">Ciudad</th>
@@ -559,7 +816,7 @@ export default function CrmDashboardPage() {
                 {contactosRecientes.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="py-8 text-center text-sm text-[#737563]"
                     >
                       {loading
@@ -574,8 +831,14 @@ export default function CrmDashboardPage() {
                       className="border-b border-[#F0EDE7] text-sm text-[#4A4A4A]"
                     >
                       <td className="py-4 pr-4">
+                        <span className="rounded-full bg-[#1F1F1F] px-3 py-1 text-xs font-semibold text-white">
+                          {contacto.codigo_contacto || "Sin código"}
+                        </span>
+                      </td>
+
+                      <td className="py-4 pr-4">
                         <div className="font-semibold text-[#1F1F1F]">
-                          {contacto.nombre} {contacto.apellido || ""}
+                          {nombreContacto(contacto)}
                         </div>
 
                         <div className="text-xs text-[#737563]">
@@ -584,7 +847,15 @@ export default function CrmDashboardPage() {
                       </td>
 
                       <td className="py-4 pr-4">
-                        {contacto.empresa_salon || "Sin empresa"}
+                        <div className="font-semibold text-[#1F1F1F]">
+                          {empresaVisible(contacto)}
+                        </div>
+
+                        {contacto.razon_social && (
+                          <div className="text-xs text-[#737563]">
+                            {contacto.razon_social}
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-4 pr-4">{contacto.tipo_contacto}</td>

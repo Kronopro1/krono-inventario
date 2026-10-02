@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -11,8 +11,21 @@ import {
   Users,
   KanbanSquare,
   Plus,
+  Search,
+  X,
+  FileText,
+  MessageCircle,
 } from "lucide-react"
 import { supabase } from "@/src/lib/supabase"
+
+type Rol = "admin" | "operador" | "consulta" | "vendedor"
+
+type Perfil = {
+  nombre: string
+  email: string
+  rol: Rol
+  activo: boolean
+}
 
 type CrmTarea = {
   id: string
@@ -25,15 +38,66 @@ type CrmTarea = {
   fecha_tarea: string | null
   hora_tarea: string | null
   created_at: string
+  creado_por: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
 }
 
 type CrmContacto = {
   id: string
+  codigo_contacto: string | null
   nombre: string
   apellido: string | null
   empresa_salon: string | null
+  razon_social: string | null
+  nombre_comercial: string | null
+  tipo_documento: string | null
+  numero_documento: string | null
   whatsapp: string | null
+  whatsapp_usuario: string | null
   email: string | null
+  creado_por: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
+}
+
+function limpiarWhatsapp(numero: string | null) {
+  if (!numero) return ""
+  return numero.replace(/\D/g, "")
+}
+
+function limpiarUsuarioWhatsapp(usuario: string | null) {
+  if (!usuario) return ""
+
+  const limpio = usuario.trim()
+  if (!limpio) return ""
+
+  return limpio.startsWith("@") ? limpio : `@${limpio}`
+}
+
+function obtenerNombreCompleto(contacto: CrmContacto) {
+  return `${contacto.nombre} ${contacto.apellido || ""}`.trim()
+}
+
+function obtenerEmpresaVisible(contacto: CrmContacto) {
+  return (
+    contacto.empresa_salon ||
+    contacto.nombre_comercial ||
+    contacto.razon_social ||
+    "Sin empresa"
+  )
+}
+
+function obtenerDocumentoVisible(contacto: CrmContacto) {
+  if (contacto.tipo_documento && contacto.numero_documento) {
+    return `${contacto.tipo_documento}: ${contacto.numero_documento}`
+  }
+
+  if (contacto.numero_documento) {
+    return contacto.numero_documento
+  }
+
+  return "Sin documento"
 }
 
 export default function TareasPage() {
@@ -41,6 +105,9 @@ export default function TareasPage() {
   const [contactos, setContactos] = useState<CrmContacto[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [perfil, setPerfil] = useState<Perfil | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [busqueda, setBusqueda] = useState("")
 
   useEffect(() => {
     cargarDatos()
@@ -50,21 +117,46 @@ export default function TareasPage() {
     setLoading(true)
     setError("")
 
-    const { data: tareasData, error: tareasError } = await supabase
-      .from("crm_tareas")
-      .select("*")
-      .order("fecha_tarea", { ascending: true })
+    const { data: sessionData } = await supabase.auth.getSession()
+    const session = sessionData.session
 
-    if (tareasError) {
-      setError(tareasError.message)
+    if (!session?.user?.email) {
+      setError("No se encontró una sesión activa.")
       setLoading(false)
       return
     }
 
-    const { data: contactosData, error: contactosError } = await supabase
+    setUserId(session.user.id)
+
+    const { data: perfilData, error: perfilError } = await supabase
+      .from("perfiles")
+      .select("nombre, email, rol, activo")
+      .eq("email", session.user.email)
+      .single()
+
+    if (perfilError || !perfilData) {
+      setError("No se pudo cargar el perfil del usuario.")
+      setLoading(false)
+      return
+    }
+
+    const perfilUsuario = perfilData as Perfil
+    setPerfil(perfilUsuario)
+
+    let contactosQuery = supabase
       .from("crm_contactos")
-      .select("id, nombre, apellido, empresa_salon, whatsapp, email")
+      .select(
+        "id, codigo_contacto, nombre, apellido, empresa_salon, razon_social, nombre_comercial, tipo_documento, numero_documento, whatsapp, whatsapp_usuario, email, creado_por, asesor_asignado_id, asesor_asignado_nombre"
+      )
       .eq("activo", true)
+
+    if (perfilUsuario.rol === "vendedor") {
+      contactosQuery = contactosQuery.or(
+        `creado_por.eq.${session.user.id},asesor_asignado_id.eq.${session.user.id}`
+      )
+    }
+
+    const { data: contactosData, error: contactosError } = await contactosQuery
 
     if (contactosError) {
       setError(contactosError.message)
@@ -72,18 +164,97 @@ export default function TareasPage() {
       return
     }
 
+    const contactosPermitidos = (contactosData || []) as CrmContacto[]
+    const contactosIdsPermitidos = contactosPermitidos.map(
+      (contacto) => contacto.id
+    )
+
+    let tareasQuery = supabase
+      .from("crm_tareas")
+      .select("*")
+      .order("fecha_tarea", { ascending: true })
+
+    if (perfilUsuario.rol === "vendedor") {
+      if (contactosIdsPermitidos.length === 0) {
+        setContactos(contactosPermitidos)
+        setTareas([])
+        setLoading(false)
+        return
+      }
+
+      tareasQuery = tareasQuery.in("contacto_id", contactosIdsPermitidos)
+    }
+
+    const { data: tareasData, error: tareasError } = await tareasQuery
+
+    if (tareasError) {
+      setError(tareasError.message)
+      setLoading(false)
+      return
+    }
+
     setTareas((tareasData || []) as CrmTarea[])
-    setContactos((contactosData || []) as CrmContacto[])
+    setContactos(contactosPermitidos)
     setLoading(false)
   }
 
   const hoy = new Date().toISOString().slice(0, 10)
+  const esVendedor = perfil?.rol === "vendedor"
 
   const contactoPorId = (contactoId: string) => {
     return contactos.find((contacto) => contacto.id === contactoId)
   }
 
-  const tareasPendientes = tareas.filter(
+  const puedeGestionarTarea = (tarea: CrmTarea) => {
+    if (!esVendedor) return true
+    if (!userId) return false
+
+    const contacto = contactoPorId(tarea.contacto_id)
+
+    if (!contacto) return false
+
+    return contacto.creado_por === userId || contacto.asesor_asignado_id === userId
+  }
+
+  const tareasFiltradas = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase()
+
+    if (!texto) return tareas
+
+    return tareas.filter((tarea) => {
+      const contacto = contactoPorId(tarea.contacto_id)
+
+      const empresaVisible = contacto ? obtenerEmpresaVisible(contacto) : ""
+      const documentoVisible = contacto ? obtenerDocumentoVisible(contacto) : ""
+      const usuarioWhatsapp = contacto
+        ? limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
+        : ""
+
+      return (
+        tarea.tipo?.toLowerCase().includes(texto) ||
+        tarea.titulo?.toLowerCase().includes(texto) ||
+        tarea.descripcion?.toLowerCase().includes(texto) ||
+        tarea.estado?.toLowerCase().includes(texto) ||
+        tarea.prioridad?.toLowerCase().includes(texto) ||
+        tarea.asesor_asignado_nombre?.toLowerCase().includes(texto) ||
+        contacto?.codigo_contacto?.toLowerCase().includes(texto) ||
+        contacto?.nombre?.toLowerCase().includes(texto) ||
+        contacto?.apellido?.toLowerCase().includes(texto) ||
+        contacto?.empresa_salon?.toLowerCase().includes(texto) ||
+        contacto?.nombre_comercial?.toLowerCase().includes(texto) ||
+        contacto?.razon_social?.toLowerCase().includes(texto) ||
+        contacto?.tipo_documento?.toLowerCase().includes(texto) ||
+        contacto?.numero_documento?.toLowerCase().includes(texto) ||
+        documentoVisible.toLowerCase().includes(texto) ||
+        empresaVisible.toLowerCase().includes(texto) ||
+        contacto?.whatsapp?.toLowerCase().includes(texto) ||
+        usuarioWhatsapp.toLowerCase().includes(texto) ||
+        contacto?.email?.toLowerCase().includes(texto)
+      )
+    })
+  }, [tareas, contactos, busqueda])
+
+  const tareasPendientes = tareasFiltradas.filter(
     (tarea) => tarea.estado !== "Completado"
   )
 
@@ -103,18 +274,23 @@ export default function TareasPage() {
     (tarea) => !tarea.fecha_tarea
   )
 
-  const tareasCompletadas = tareas.filter(
+  const tareasCompletadas = tareasFiltradas.filter(
     (tarea) => tarea.estado === "Completado"
   )
 
-  const completarTarea = async (tareaId: string) => {
+  const completarTarea = async (tarea: CrmTarea) => {
+    if (!puedeGestionarTarea(tarea)) {
+      setError("No tienes permiso para completar esta tarea.")
+      return
+    }
+
     const { error } = await supabase
       .from("crm_tareas")
       .update({
         estado: "Completado",
         completada_en: new Date().toISOString(),
       })
-      .eq("id", tareaId)
+      .eq("id", tarea.id)
 
     if (error) {
       setError(error.message)
@@ -126,6 +302,10 @@ export default function TareasPage() {
 
   const renderTarea = (tarea: CrmTarea) => {
     const contacto = contactoPorId(tarea.contacto_id)
+    const whatsapp = contacto ? limpiarWhatsapp(contacto.whatsapp) : ""
+    const usuarioWhatsapp = contacto
+      ? limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
+      : ""
 
     return (
       <div
@@ -154,21 +334,55 @@ export default function TareasPage() {
           </span>
         </div>
 
-        <div className="space-y-2 text-sm text-[#4A4A4A]">
-          <div className="flex items-center gap-2">
-            <UserRound size={16} className="text-[#737563]" />
+        <div className="space-y-3 text-sm text-[#4A4A4A]">
+          {contacto ? (
+            <div className="rounded-xl bg-[#F7F6F2] p-4">
+              <div className="mb-2 flex flex-wrap gap-2">
+                <span className="rounded-full bg-[#1F1F1F] px-3 py-1 text-[11px] font-semibold text-white">
+                  {contacto.codigo_contacto || "Sin código"}
+                </span>
 
-            {contacto ? (
-              <Link
-                href={`/crm/contactos/${contacto.id}`}
-                className="font-semibold text-[#1F1F1F] hover:text-[#737563]"
-              >
-                {contacto.nombre} {contacto.apellido || ""}
-              </Link>
-            ) : (
+                {contacto.numero_documento && (
+                  <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#737563]">
+                    {obtenerDocumentoVisible(contacto)}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <UserRound size={16} className="text-[#737563]" />
+
+                <Link
+                  href={`/crm/contactos/${contacto.id}`}
+                  className="font-semibold text-[#1F1F1F] hover:text-[#737563]"
+                >
+                  {obtenerNombreCompleto(contacto)}
+                </Link>
+              </div>
+
+              <p className="mt-2 text-sm text-[#737563]">
+                {obtenerEmpresaVisible(contacto)}
+              </p>
+
+              {contacto.razon_social && (
+                <p className="mt-1 text-xs text-[#737563]">
+                  Razón social: {contacto.razon_social}
+                </p>
+              )}
+
+              <p className="mt-1 text-xs text-[#737563]">
+                Contacto:{" "}
+                <span className="font-semibold">
+                  {contacto.whatsapp || usuarioWhatsapp || "Sin WhatsApp"}
+                </span>
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <UserRound size={16} className="text-[#737563]" />
               <span>Contacto no encontrado</span>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <CalendarCheck size={16} className="text-[#737563]" />
@@ -178,22 +392,57 @@ export default function TareasPage() {
             </span>
           </div>
 
-          {contacto?.empresa_salon && (
+          <p className="text-sm text-[#737563]">
+            Asesor:{" "}
+            <span className="font-semibold text-blue-700">
+              {tarea.asesor_asignado_nombre ||
+                contacto?.asesor_asignado_nombre ||
+                "Sin asignar"}
+            </span>
+          </p>
+
+          {tarea.prioridad && (
             <p className="text-sm text-[#737563]">
-              {contacto.empresa_salon}
+              Prioridad:{" "}
+              <span className="font-semibold text-[#1F1F1F]">
+                {tarea.prioridad}
+              </span>
             </p>
           )}
         </div>
 
-        {tarea.estado !== "Completado" && (
-          <button
-            onClick={() => completarTarea(tarea.id)}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#737563] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#1F1F1F]"
-          >
-            <CheckCircle2 size={16} />
-            Marcar completada
-          </button>
-        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {tarea.estado !== "Completado" && (
+            <button
+              onClick={() => completarTarea(tarea)}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#737563] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#1F1F1F]"
+            >
+              <CheckCircle2 size={16} />
+              Marcar completada
+            </button>
+          )}
+
+          {contacto && (
+            <Link
+              href={`/crm/contactos/${contacto.id}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-4 py-2 text-xs font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+            >
+              <FileText size={16} />
+              Ver ficha
+            </Link>
+          )}
+
+          {whatsapp && (
+            <a
+              href={`https://wa.me/${whatsapp}`}
+              target="_blank"
+              className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-green-700"
+            >
+              <MessageCircle size={16} />
+              WhatsApp
+            </a>
+          )}
+        </div>
       </div>
     )
   }
@@ -202,7 +451,7 @@ export default function TareasPage() {
     titulo: string,
     descripcion: string,
     lista: CrmTarea[],
-    icono: React.ReactNode
+    icono: ReactNode
   ) => {
     return (
       <section className="rounded-3xl border border-[#E5E2DA] bg-[#F7F6F2] p-5">
@@ -259,12 +508,13 @@ export default function TareasPage() {
             </p>
 
             <h1 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
-              Tareas Comerciales
+              {esVendedor ? "Mis Tareas Comerciales" : "Tareas Comerciales"}
             </h1>
 
             <p className="mt-2 max-w-2xl text-sm text-[#4A4A4A]">
-              Seguimiento centralizado para llamadas, WhatsApp, reuniones,
-              demos, capacitaciones y recompra.
+              {esVendedor
+                ? "Seguimiento centralizado de llamadas, WhatsApp, reuniones, demos, capacitaciones y recompra de tus contactos asignados."
+                : "Seguimiento centralizado para llamadas, WhatsApp, reuniones, demos, capacitaciones y recompra."}
             </p>
           </div>
 
@@ -295,10 +545,62 @@ export default function TareasPage() {
           </div>
         </div>
 
-        <section className="mb-6 grid gap-4 md:grid-cols-4">
-          <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
+        {esVendedor && (
+          <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-700">
+            Estás viendo únicamente tareas de contactos creados por ti o
+            asignados a tu usuario.
+          </div>
+        )}
+
+        <section className="mb-6 rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#737563]">
+                Buscar tarea
+              </label>
+
+              <div className="relative">
+                <Search
+                  size={18}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-[#737563]"
+                />
+
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Código, RUC/DNI, razón social, nombre comercial, tarea, asesor, WhatsApp..."
+                  className="w-full rounded-xl border border-[#E5E2DA] bg-[#F7F6F2] py-3 pl-11 pr-4 text-sm text-[#1F1F1F] outline-none transition placeholder:text-[#737563] focus:border-[#737563] focus:bg-white"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setBusqueda("")}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+            >
+              <X size={16} />
+              Limpiar
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-xl bg-[#F7F6F2] px-4 py-3 text-sm text-[#737563]">
+            Mostrando{" "}
+            <span className="font-semibold text-[#1F1F1F]">
+              {tareasFiltradas.length}
+            </span>{" "}
+            de{" "}
+            <span className="font-semibold text-[#1F1F1F]">
+              {tareas.length}
+            </span>{" "}
+            tareas.
+          </div>
+        </section>
+
+        <section className="mb-6 grid gap-4 md:grid-cols-5">
+          <div className="rounded-2xl border border-red-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-[#737563]">Vencidas</p>
-            <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
+            <h2 className="mt-2 text-3xl font-semibold text-red-600">
               {loading ? "..." : tareasVencidas.length}
             </h2>
           </div>
@@ -314,6 +616,13 @@ export default function TareasPage() {
             <p className="text-sm text-[#737563]">Próximas</p>
             <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
               {loading ? "..." : tareasProximas.length}
+            </h2>
+          </div>
+
+          <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
+            <p className="text-sm text-[#737563]">Sin fecha</p>
+            <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
+              {loading ? "..." : tareasSinFecha.length}
             </h2>
           </div>
 

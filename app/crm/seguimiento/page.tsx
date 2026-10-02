@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -11,17 +11,40 @@ import {
   Flame,
   Snowflake,
   Plus,
+  Search,
+  X,
+  FileText,
 } from "lucide-react"
 import { supabase } from "@/src/lib/supabase"
 
+type Rol = "admin" | "operador" | "consulta" | "vendedor"
+
+type Perfil = {
+  nombre: string
+  email: string
+  rol: Rol
+  activo: boolean
+}
+
 type CrmContacto = {
   id: string
+  codigo_contacto: string | null
   nombre: string
   apellido: string | null
   empresa_salon: string | null
+  razon_social: string | null
+  nombre_comercial: string | null
+  tipo_documento: string | null
+  numero_documento: string | null
   tipo_contacto: string
   estado_comercial: string
+  asesor_asignado: string | null
+  ultimo_contacto_por: string | null
+  creado_por: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
   whatsapp: string | null
+  whatsapp_usuario: string | null
   email: string | null
   ciudad: string | null
   valor_potencial: number | string | null
@@ -39,6 +62,9 @@ type CrmTarea = {
   fecha_tarea: string | null
   hora_tarea: string | null
   prioridad: string | null
+  creado_por: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
 }
 
 function fechaLocalISO() {
@@ -62,8 +88,49 @@ function diasDesde(fecha: string | null) {
 
 function limpiarWhatsapp(numero: string | null) {
   if (!numero) return ""
-
   return numero.replace(/\D/g, "")
+}
+
+function limpiarUsuarioWhatsapp(usuario: string | null) {
+  if (!usuario) return ""
+
+  const limpio = usuario.trim()
+  if (!limpio) return ""
+
+  return limpio.startsWith("@") ? limpio : `@${limpio}`
+}
+
+function obtenerNombreCompleto(contacto: CrmContacto) {
+  return `${contacto.nombre} ${contacto.apellido || ""}`.trim()
+}
+
+function obtenerEmpresaVisible(contacto: CrmContacto) {
+  return (
+    contacto.empresa_salon ||
+    contacto.nombre_comercial ||
+    contacto.razon_social ||
+    "Sin empresa"
+  )
+}
+
+function obtenerDocumentoVisible(contacto: CrmContacto) {
+  if (contacto.tipo_documento && contacto.numero_documento) {
+    return `${contacto.tipo_documento}: ${contacto.numero_documento}`
+  }
+
+  if (contacto.numero_documento) {
+    return contacto.numero_documento
+  }
+
+  return "Sin documento"
+}
+
+function obtenerAsesorVisible(contacto: CrmContacto) {
+  return (
+    contacto.asesor_asignado_nombre ||
+    contacto.asesor_asignado ||
+    "Sin asignar"
+  )
 }
 
 export default function SeguimientoCRMPage() {
@@ -71,17 +138,52 @@ export default function SeguimientoCRMPage() {
   const [tareas, setTareas] = useState<CrmTarea[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [perfil, setPerfil] = useState<Perfil | null>(null)
+  const [busqueda, setBusqueda] = useState("")
 
   useEffect(() => {
     async function cargarDatos() {
       setLoading(true)
       setError("")
 
-      const { data: contactosData, error: contactosError } = await supabase
+      const { data: sessionData } = await supabase.auth.getSession()
+      const session = sessionData.session
+
+      if (!session?.user?.email) {
+        setError("No se encontró una sesión activa.")
+        setLoading(false)
+        return
+      }
+
+      const { data: perfilData, error: perfilError } = await supabase
+        .from("perfiles")
+        .select("nombre, email, rol, activo")
+        .eq("email", session.user.email)
+        .single()
+
+      if (perfilError || !perfilData) {
+        setError("No se pudo cargar el perfil del usuario.")
+        setLoading(false)
+        return
+      }
+
+      const perfilUsuario = perfilData as Perfil
+      setPerfil(perfilUsuario)
+
+      let contactosQuery = supabase
         .from("crm_contactos")
         .select("*")
         .eq("activo", true)
         .order("created_at", { ascending: false })
+
+      if (perfilUsuario.rol === "vendedor") {
+        contactosQuery = contactosQuery.or(
+          `creado_por.eq.${session.user.id},asesor_asignado_id.eq.${session.user.id}`
+        )
+      }
+
+      const { data: contactosData, error: contactosError } =
+        await contactosQuery
 
       if (contactosError) {
         setError(contactosError.message)
@@ -89,10 +191,28 @@ export default function SeguimientoCRMPage() {
         return
       }
 
-      const { data: tareasData, error: tareasError } = await supabase
+      const contactosPermitidos = (contactosData || []) as CrmContacto[]
+      const contactosIdsPermitidos = contactosPermitidos.map(
+        (contacto) => contacto.id
+      )
+
+      let tareasQuery = supabase
         .from("crm_tareas")
         .select("*")
         .neq("estado", "Completado")
+
+      if (perfilUsuario.rol === "vendedor") {
+        if (contactosIdsPermitidos.length === 0) {
+          setContactos(contactosPermitidos)
+          setTareas([])
+          setLoading(false)
+          return
+        }
+
+        tareasQuery = tareasQuery.in("contacto_id", contactosIdsPermitidos)
+      }
+
+      const { data: tareasData, error: tareasError } = await tareasQuery
 
       if (tareasError) {
         setError(tareasError.message)
@@ -100,7 +220,7 @@ export default function SeguimientoCRMPage() {
         return
       }
 
-      setContactos((contactosData || []) as CrmContacto[])
+      setContactos(contactosPermitidos)
       setTareas((tareasData || []) as CrmTarea[])
       setLoading(false)
     }
@@ -108,23 +228,68 @@ export default function SeguimientoCRMPage() {
     cargarDatos()
   }, [])
 
+  const esVendedor = perfil?.rol === "vendedor"
   const hoy = fechaLocalISO()
 
+  const contactosFiltrados = useMemo(() => {
+    const texto = busqueda.trim().toLowerCase()
+
+    if (!texto) return contactos
+
+    return contactos.filter((contacto) => {
+      const empresaVisible = obtenerEmpresaVisible(contacto)
+      const documentoVisible = obtenerDocumentoVisible(contacto)
+      const asesorVisible = obtenerAsesorVisible(contacto)
+      const usuarioWhatsapp = limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
+
+      return (
+        contacto.codigo_contacto?.toLowerCase().includes(texto) ||
+        contacto.nombre?.toLowerCase().includes(texto) ||
+        contacto.apellido?.toLowerCase().includes(texto) ||
+        contacto.empresa_salon?.toLowerCase().includes(texto) ||
+        contacto.nombre_comercial?.toLowerCase().includes(texto) ||
+        contacto.razon_social?.toLowerCase().includes(texto) ||
+        contacto.tipo_documento?.toLowerCase().includes(texto) ||
+        contacto.numero_documento?.toLowerCase().includes(texto) ||
+        documentoVisible.toLowerCase().includes(texto) ||
+        empresaVisible.toLowerCase().includes(texto) ||
+        contacto.tipo_contacto?.toLowerCase().includes(texto) ||
+        contacto.estado_comercial?.toLowerCase().includes(texto) ||
+        contacto.whatsapp?.toLowerCase().includes(texto) ||
+        usuarioWhatsapp.toLowerCase().includes(texto) ||
+        contacto.email?.toLowerCase().includes(texto) ||
+        contacto.ciudad?.toLowerCase().includes(texto) ||
+        asesorVisible.toLowerCase().includes(texto)
+      )
+    })
+  }, [contactos, busqueda])
+
+  const tareasPermitidasFiltradas = useMemo(() => {
+    const idsContactosFiltrados = new Set(
+      contactosFiltrados.map((contacto) => contacto.id)
+    )
+
+    return tareas.filter((tarea) => {
+      if (!tarea.contacto_id) return true
+      return idsContactosFiltrados.has(tarea.contacto_id)
+    })
+  }, [tareas, contactosFiltrados])
+
   const tareasVencidas = useMemo(() => {
-    return tareas.filter(
+    return tareasPermitidasFiltradas.filter(
       (tarea) => tarea.fecha_tarea && tarea.fecha_tarea < hoy
     )
-  }, [tareas, hoy])
+  }, [tareasPermitidasFiltradas, hoy])
 
   const tareasHoy = useMemo(() => {
-    return tareas.filter((tarea) => tarea.fecha_tarea === hoy)
-  }, [tareas, hoy])
+    return tareasPermitidasFiltradas.filter((tarea) => tarea.fecha_tarea === hoy)
+  }, [tareasPermitidasFiltradas, hoy])
 
   const contactosSinSeguimiento = useMemo(() => {
-    return contactos.filter((contacto) => {
+    return contactosFiltrados.filter((contacto) => {
       const diasUltimaInteraccion = diasDesde(contacto.ultima_interaccion)
 
-      const tieneTareaPendiente = tareas.some(
+      const tieneTareaPendiente = tareasPermitidasFiltradas.some(
         (tarea) => tarea.contacto_id === contacto.id
       )
 
@@ -133,10 +298,10 @@ export default function SeguimientoCRMPage() {
 
       return !tieneTareaPendiente && sinInteraccionReciente
     })
-  }, [contactos, tareas])
+  }, [contactosFiltrados, tareasPermitidasFiltradas])
 
   const leadsCalientes = useMemo(() => {
-    return contactos.filter((contacto) => {
+    return contactosFiltrados.filter((contacto) => {
       return [
         "Respondió",
         "Lead Calificado",
@@ -147,7 +312,7 @@ export default function SeguimientoCRMPage() {
         "Negociación",
       ].includes(contacto.estado_comercial)
     })
-  }, [contactos])
+  }, [contactosFiltrados])
 
   const leadsEnfriandose = useMemo(() => {
     return leadsCalientes.filter((contacto) => {
@@ -157,7 +322,7 @@ export default function SeguimientoCRMPage() {
   }, [leadsCalientes])
 
   const clientesParaRecompra = useMemo(() => {
-    return contactos.filter((contacto) => {
+    return contactosFiltrados.filter((contacto) => {
       const esCliente =
         contacto.estado_comercial === "Cliente Activo" ||
         contacto.estado_comercial === "Primera Compra" ||
@@ -167,7 +332,11 @@ export default function SeguimientoCRMPage() {
 
       return esCliente && (dias === null || dias >= 30)
     })
-  }, [contactos])
+  }, [contactosFiltrados])
+
+  const contactosSinDocumento = useMemo(() => {
+    return contactosFiltrados.filter((contacto) => !contacto.numero_documento)
+  }, [contactosFiltrados])
 
   const prioridadTotal =
     tareasVencidas.length +
@@ -196,13 +365,15 @@ export default function SeguimientoCRMPage() {
             </p>
 
             <h1 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
-              Seguimiento Comercial
+              {esVendedor
+                ? "Mi Seguimiento Comercial"
+                : "Seguimiento Comercial"}
             </h1>
 
             <p className="mt-2 max-w-2xl text-sm text-[#4A4A4A]">
-              Vista diaria para detectar contactos que necesitan atención,
-              leads que se están enfriando y clientes con oportunidad de
-              recompra.
+              {esVendedor
+                ? "Vista diaria para detectar tus contactos asignados que necesitan atención, leads que se están enfriando y clientes con oportunidad de recompra."
+                : "Vista diaria para detectar contactos que necesitan atención, leads que se están enfriando y clientes con oportunidad de recompra."}
             </p>
           </div>
 
@@ -221,7 +392,59 @@ export default function SeguimientoCRMPage() {
           </div>
         )}
 
-        <section className="mb-8 grid gap-4 md:grid-cols-5">
+        {esVendedor && (
+          <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-700">
+            Estás viendo únicamente seguimientos de contactos creados por ti o
+            asignados a tu usuario.
+          </div>
+        )}
+
+        <section className="mb-6 rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
+          <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <div>
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-[#737563]">
+                Buscar seguimiento
+              </label>
+
+              <div className="relative">
+                <Search
+                  size={18}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-[#737563]"
+                />
+
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Código, RUC/DNI, razón social, nombre comercial, nombre, salón, asesor, WhatsApp..."
+                  className="w-full rounded-xl border border-[#E5E2DA] bg-[#F7F6F2] py-3 pl-11 pr-4 text-sm text-[#1F1F1F] outline-none transition placeholder:text-[#737563] focus:border-[#737563] focus:bg-white"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setBusqueda("")}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
+            >
+              <X size={16} />
+              Limpiar
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-xl bg-[#F7F6F2] px-4 py-3 text-sm text-[#737563]">
+            Mostrando{" "}
+            <span className="font-semibold text-[#1F1F1F]">
+              {contactosFiltrados.length}
+            </span>{" "}
+            de{" "}
+            <span className="font-semibold text-[#1F1F1F]">
+              {contactos.length}
+            </span>{" "}
+            contactos.
+          </div>
+        </section>
+
+        <section className="mb-8 grid gap-4 md:grid-cols-6">
           <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
             <p className="text-sm text-[#737563]">Prioridades</p>
             <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
@@ -254,6 +477,13 @@ export default function SeguimientoCRMPage() {
             <p className="text-sm text-[#737563]">Sin seguimiento</p>
             <h2 className="mt-2 text-3xl font-semibold text-blue-600">
               {loading ? "..." : contactosSinSeguimiento.length}
+            </h2>
+          </div>
+
+          <div className="rounded-2xl border border-yellow-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-[#737563]">Sin documento</p>
+            <h2 className="mt-2 text-3xl font-semibold text-yellow-700">
+              {loading ? "..." : contactosSinDocumento.length}
             </h2>
           </div>
         </section>
@@ -303,6 +533,15 @@ export default function SeguimientoCRMPage() {
             etiqueta="Recompra"
             color="neutral"
           />
+
+          <BloqueContactos
+            titulo="Contactos sin documento"
+            descripcion="Contactos que necesitan completar RUC, DNI, C.E. u otro documento."
+            icono={<FileText size={20} />}
+            contactos={contactosSinDocumento}
+            etiqueta="Completar datos"
+            color="yellow"
+          />
         </section>
       </div>
     </main>
@@ -319,15 +558,16 @@ function BloqueContactos({
 }: {
   titulo: string
   descripcion: string
-  icono: React.ReactNode
+  icono: ReactNode
   contactos: CrmContacto[]
   etiqueta: string
-  color: "orange" | "blue" | "neutral"
+  color: "orange" | "blue" | "neutral" | "yellow"
 }) {
   const estilos = {
     orange: "bg-orange-50 text-orange-600",
     blue: "bg-blue-50 text-blue-600",
     neutral: "bg-[#F7F6F2] text-[#737563]",
+    yellow: "bg-yellow-50 text-yellow-700",
   }
 
   return (
@@ -348,6 +588,10 @@ function BloqueContactos({
       <div className="space-y-3">
         {contactos.slice(0, 8).map((contacto) => {
           const whatsapp = limpiarWhatsapp(contacto.whatsapp)
+          const usuarioWhatsapp = limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
+          const asesorVisible = obtenerAsesorVisible(contacto)
+          const documentoVisible = obtenerDocumentoVisible(contacto)
+          const empresaVisible = obtenerEmpresaVisible(contacto)
 
           return (
             <div
@@ -356,13 +600,44 @@ function BloqueContactos({
             >
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-[#1F1F1F] px-3 py-1 text-[11px] font-semibold text-white">
+                      {contacto.codigo_contacto || "Sin código"}
+                    </span>
+
+                    {contacto.numero_documento && (
+                      <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#737563]">
+                        {documentoVisible}
+                      </span>
+                    )}
+                  </div>
+
                   <p className="font-semibold text-[#1F1F1F]">
-                    {contacto.nombre} {contacto.apellido || ""}
+                    {obtenerNombreCompleto(contacto)}
                   </p>
 
                   <p className="mt-1 text-xs text-[#737563]">
-                    {contacto.empresa_salon || "Sin empresa"} ·{" "}
-                    {contacto.estado_comercial}
+                    {empresaVisible} · {contacto.estado_comercial}
+                  </p>
+
+                  {contacto.razon_social && (
+                    <p className="mt-1 text-xs text-[#737563]">
+                      Razón social: {contacto.razon_social}
+                    </p>
+                  )}
+
+                  <p className="mt-1 text-xs text-[#737563]">
+                    Asesor:{" "}
+                    <span className="font-semibold text-blue-700">
+                      {asesorVisible}
+                    </span>
+                  </p>
+
+                  <p className="mt-1 text-xs text-[#737563]">
+                    Contacto:{" "}
+                    <span className="font-semibold">
+                      {contacto.whatsapp || usuarioWhatsapp || "Sin WhatsApp"}
+                    </span>
                   </p>
 
                   <p className="mt-1 text-xs text-[#737563]">
@@ -421,7 +696,7 @@ function BloqueTareas({
 }: {
   titulo: string
   descripcion: string
-  icono: React.ReactNode
+  icono: ReactNode
   tareas: CrmTarea[]
   estado: string
   color: "red" | "neutral"
@@ -459,6 +734,13 @@ function BloqueTareas({
                 <p className="mt-1 text-xs text-[#737563]">
                   {tarea.fecha_tarea || "Sin fecha"}{" "}
                   {tarea.hora_tarea ? `· ${tarea.hora_tarea}` : ""}
+                </p>
+
+                <p className="mt-1 text-xs text-[#737563]">
+                  Asesor:{" "}
+                  <span className="font-semibold text-blue-700">
+                    {tarea.asesor_asignado_nombre || "Sin asignar"}
+                  </span>
                 </p>
               </div>
 

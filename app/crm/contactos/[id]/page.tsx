@@ -24,13 +24,32 @@ import {
 } from "lucide-react"
 import { supabase } from "@/src/lib/supabase"
 
+type Rol = "admin" | "operador" | "consulta" | "vendedor"
+
+type Perfil = {
+  nombre: string
+  email: string
+  rol: Rol
+  activo: boolean
+}
+
 type CrmContacto = {
   id: string
+  codigo_contacto: string | null
   nombre: string
   apellido: string | null
   empresa_salon: string | null
+  razon_social: string | null
+  nombre_comercial: string | null
+  tipo_documento: string | null
+  numero_documento: string | null
   tipo_contacto: string
   estado_comercial: string
+  asesor_asignado: string | null
+  ultimo_contacto_por: string | null
+  creado_por: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
   whatsapp: string | null
   whatsapp_usuario: string | null
   telefono: string | null
@@ -64,6 +83,9 @@ type CrmTarea = {
   hora_tarea: string | null
   estado: string
   created_at: string
+  creado_por: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
 }
 
 const plantillasRapidas = [
@@ -128,6 +150,10 @@ export default function ContactoDetallePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
+  const [perfil, setPerfil] = useState<Perfil | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [accesoDenegado, setAccesoDenegado] = useState(false)
+
   const [plantillaSeleccionada, setPlantillaSeleccionada] = useState(
     plantillasRapidas[0].id
   )
@@ -150,11 +176,39 @@ export default function ContactoDetallePage() {
     if (id) {
       cargarDatos()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   const cargarDatos = async () => {
     setLoading(true)
     setError("")
+    setAccesoDenegado(false)
+
+    const { data: sessionData } = await supabase.auth.getSession()
+    const session = sessionData.session
+
+    if (!session?.user?.email) {
+      setError("No se encontró una sesión activa.")
+      setLoading(false)
+      return
+    }
+
+    setUserId(session.user.id)
+
+    const { data: perfilData, error: perfilError } = await supabase
+      .from("perfiles")
+      .select("nombre, email, rol, activo")
+      .eq("email", session.user.email)
+      .single()
+
+    if (perfilError || !perfilData) {
+      setError("No se pudo cargar el perfil del usuario.")
+      setLoading(false)
+      return
+    }
+
+    const perfilUsuario = perfilData as Perfil
+    setPerfil(perfilUsuario)
 
     const { data: contactoData, error: contactoError } = await supabase
       .from("crm_contactos")
@@ -162,10 +216,27 @@ export default function ContactoDetallePage() {
       .eq("id", id)
       .single()
 
-    if (contactoError) {
-      setError(contactoError.message)
+    if (contactoError || !contactoData) {
+      setError(contactoError?.message || "No se encontró el contacto.")
       setLoading(false)
       return
+    }
+
+    const contactoActual = contactoData as CrmContacto
+
+    if (perfilUsuario.rol === "vendedor") {
+      const puedeVer =
+        contactoActual.creado_por === session.user.id ||
+        contactoActual.asesor_asignado_id === session.user.id
+
+      if (!puedeVer) {
+        setAccesoDenegado(true)
+        setContacto(null)
+        setNotas([])
+        setTareas([])
+        setLoading(false)
+        return
+      }
     }
 
     const { data: notasData } = await supabase
@@ -180,14 +251,27 @@ export default function ContactoDetallePage() {
       .eq("contacto_id", id)
       .order("fecha_tarea", { ascending: true })
 
-    setContacto(contactoData as CrmContacto)
+    setContacto(contactoActual)
     setNotas((notasData || []) as CrmNota[])
     setTareas((tareasData || []) as CrmTarea[])
     setLoading(false)
   }
 
+  const puedeGestionarContacto = () => {
+    if (!contacto) return false
+    if (perfil?.rol !== "vendedor") return true
+    if (!userId) return false
+
+    return contacto.creado_por === userId || contacto.asesor_asignado_id === userId
+  }
+
   const guardarNota = async () => {
     if (!nuevaNota.trim()) return
+
+    if (!puedeGestionarContacto()) {
+      setError("No tienes permiso para agregar notas a este contacto.")
+      return
+    }
 
     setGuardandoNota(true)
     setError("")
@@ -211,6 +295,11 @@ export default function ContactoDetallePage() {
   const guardarTarea = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
+    if (!puedeGestionarContacto()) {
+      setError("No tienes permiso para crear tareas en este contacto.")
+      return
+    }
+
     if (!formTarea.titulo.trim() || !formTarea.fecha_tarea) {
       setError("La tarea necesita título y fecha.")
       return
@@ -228,6 +317,10 @@ export default function ContactoDetallePage() {
       hora_tarea: formTarea.hora_tarea || null,
       estado: "Pendiente",
       prioridad: "Media",
+      creado_por: userId,
+      asesor_asignado_id: contacto?.asesor_asignado_id || userId,
+      asesor_asignado_nombre:
+        contacto?.asesor_asignado_nombre || perfil?.nombre || null,
     })
 
     if (error) {
@@ -250,6 +343,11 @@ export default function ContactoDetallePage() {
   }
 
   const desactivarContacto = async () => {
+    if (perfil?.rol !== "admin") {
+      setError("Solo un administrador puede desactivar contactos.")
+      return
+    }
+
     const confirmar = window.confirm(
       "¿Seguro que deseas desactivar este contacto? No se borrará el historial, solo dejará de aparecer en el CRM."
     )
@@ -277,12 +375,19 @@ export default function ContactoDetallePage() {
       titulo: "Contacto desactivado",
       descripcion:
         "El contacto fue desactivado del CRM sin borrar su historial.",
+      creado_por: userId,
+      asesor_nombre: perfil?.nombre || null,
     })
 
     router.push("/crm/contactos")
   }
 
   const completarTarea = async (tareaId: string) => {
+    if (!puedeGestionarContacto()) {
+      setError("No tienes permiso para completar tareas de este contacto.")
+      return
+    }
+
     const { error } = await supabase
       .from("crm_tareas")
       .update({
@@ -332,18 +437,26 @@ export default function ContactoDetallePage() {
       tipo: "WhatsApp",
       titulo: `Plantilla usada: ${tituloPlantilla}`,
       descripcion: mensajePlantilla,
+      creado_por: userId,
+      asesor_nombre: perfil?.nombre || null,
     })
 
     await supabase
       .from("crm_contactos")
       .update({
         ultima_interaccion: new Date().toISOString(),
+        ultimo_contacto_por: perfil?.nombre || null,
       })
       .eq("id", contactoId)
   }
 
   const abrirWhatsAppConPlantilla = async () => {
     if (!contacto) return
+
+    if (!puedeGestionarContacto()) {
+      setError("No tienes permiso para contactar este cliente.")
+      return
+    }
 
     setError("")
 
@@ -392,6 +505,33 @@ export default function ContactoDetallePage() {
     )
   }
 
+  if (accesoDenegado) {
+    return (
+      <main className="min-h-screen bg-[#F7F6F2] p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm">
+            <div className="text-5xl">🚫</div>
+
+            <h1 className="mt-4 text-2xl font-bold text-[#1F1F1F]">
+              Acceso denegado
+            </h1>
+
+            <p className="mt-2 text-sm text-[#737563]">
+              Este contacto no está asignado a tu usuario y no fue creado por ti.
+            </p>
+
+            <Link
+              href="/crm/contactos"
+              className="mt-6 inline-flex rounded-2xl bg-[#737563] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1F1F1F]"
+            >
+              Volver a mis contactos
+            </Link>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
   if (error && !contacto) {
     return (
       <main className="min-h-screen bg-[#F7F6F2] p-6">
@@ -422,6 +562,20 @@ export default function ContactoDetallePage() {
   const whatsappLink = whatsappLimpio
     ? `https://wa.me/${whatsappLimpio}`
     : "#"
+
+  const asesorVisible =
+    contacto.asesor_asignado_nombre ||
+    contacto.asesor_asignado ||
+    "Sin asignar"
+
+  const codigoVisible = contacto.codigo_contacto || "Sin código"
+
+  const documentoVisible =
+    contacto.tipo_documento && contacto.numero_documento
+      ? `${contacto.tipo_documento}: ${contacto.numero_documento}`
+      : contacto.numero_documento
+        ? contacto.numero_documento
+        : "Sin documento"
 
   return (
     <main className="min-h-screen bg-[#F7F6F2] p-6">
@@ -463,6 +617,10 @@ export default function ContactoDetallePage() {
                 </p>
 
                 <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-[#1F1F1F] px-3 py-1 text-xs font-semibold text-white">
+                    {codigoVisible}
+                  </span>
+
                   <span className="rounded-full bg-[#F7F6F2] px-3 py-1 text-xs font-semibold text-[#737563]">
                     {contacto.estado_comercial}
                   </span>
@@ -470,6 +628,16 @@ export default function ContactoDetallePage() {
                   {contacto.fuente_contacto && (
                     <span className="rounded-full bg-[#F7F6F2] px-3 py-1 text-xs font-semibold text-[#737563]">
                       Fuente: {contacto.fuente_contacto}
+                    </span>
+                  )}
+
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                    Asesor: {asesorVisible}
+                  </span>
+
+                  {contacto.ultimo_contacto_por && (
+                    <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
+                      Último contacto por: {contacto.ultimo_contacto_por}
                     </span>
                   )}
 
@@ -491,14 +659,16 @@ export default function ContactoDetallePage() {
                 Editar contacto
               </Link>
 
-              <button
-                type="button"
-                onClick={desactivarContacto}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-600 transition hover:border-red-400 hover:bg-red-50"
-              >
-                <Trash2 size={18} />
-                Desactivar
-              </button>
+              {perfil?.rol === "admin" && (
+                <button
+                  type="button"
+                  onClick={desactivarContacto}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-3 text-sm font-semibold text-red-600 transition hover:border-red-400 hover:bg-red-50"
+                >
+                  <Trash2 size={18} />
+                  Desactivar
+                </button>
+              )}
 
               {whatsappLimpio && (
                 <a
@@ -520,6 +690,54 @@ export default function ContactoDetallePage() {
                   Email
                 </a>
               )}
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-6 rounded-3xl border border-[#E5E2DA] bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-semibold text-[#1F1F1F]">
+            Identificación comercial / tributaria
+          </h2>
+
+          <p className="mt-1 text-sm text-[#737563]">
+            Datos internos y legales para identificar correctamente al contacto.
+          </p>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-2xl bg-[#F7F6F2] p-5">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#737563]">
+                Código contacto
+              </p>
+              <p className="mt-2 font-semibold text-[#1F1F1F]">
+                {codigoVisible}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-[#F7F6F2] p-5">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#737563]">
+                Nombre comercial
+              </p>
+              <p className="mt-2 font-semibold text-[#1F1F1F]">
+                {contacto.nombre_comercial || "-"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-[#F7F6F2] p-5">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#737563]">
+                Documento
+              </p>
+              <p className="mt-2 font-semibold text-[#1F1F1F]">
+                {documentoVisible}
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-[#F7F6F2] p-5 md:col-span-2 lg:col-span-3">
+              <p className="text-xs uppercase tracking-[0.14em] text-[#737563]">
+                Razón social
+              </p>
+              <p className="mt-2 font-semibold text-[#1F1F1F]">
+                {contacto.razon_social || "-"}
+              </p>
             </div>
           </div>
         </section>
@@ -610,6 +828,16 @@ export default function ContactoDetallePage() {
                 </div>
 
                 <div className="rounded-2xl bg-[#F7F6F2] p-5">
+                  <UserRound size={22} className="mb-3 text-[#737563]" />
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#737563]">
+                    Asesor asignado
+                  </p>
+                  <p className="mt-2 font-semibold text-[#1F1F1F]">
+                    {asesorVisible}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-[#F7F6F2] p-5">
                   <MapPin size={22} className="mb-3 text-[#737563]" />
                   <p className="text-xs uppercase tracking-[0.14em] text-[#737563]">
                     Ubicación
@@ -631,7 +859,7 @@ export default function ContactoDetallePage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-[#F7F6F2] p-5">
+                <div className="rounded-2xl bg-[#F7F6F2] p-5 md:col-span-2">
                   <BadgeDollarSign
                     size={22}
                     className="mb-3 text-[#737563]"
@@ -874,6 +1102,13 @@ export default function ContactoDetallePage() {
                       <p className="mt-3 text-xs text-[#737563]">
                         {tarea.fecha_tarea || "Sin fecha"}
                         {tarea.hora_tarea ? ` · ${tarea.hora_tarea}` : ""}
+                      </p>
+
+                      <p className="mt-2 text-xs text-[#737563]">
+                        Asesor:{" "}
+                        <span className="font-semibold text-blue-700">
+                          {tarea.asesor_asignado_nombre || asesorVisible}
+                        </span>
                       </p>
 
                       {tarea.estado !== "Completado" && (

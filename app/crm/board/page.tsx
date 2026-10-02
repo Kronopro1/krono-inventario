@@ -20,16 +20,36 @@ import {
   BadgeDollarSign,
   Send,
   MessageSquareText,
+  FileText,
 } from "lucide-react"
 import { supabase } from "@/src/lib/supabase"
 
+type Rol = "admin" | "operador" | "consulta" | "vendedor"
+
+type Perfil = {
+  nombre: string
+  email: string
+  rol: Rol
+  activo: boolean
+}
+
 type CrmContacto = {
   id: string
+  codigo_contacto: string | null
   nombre: string
   apellido: string | null
   empresa_salon: string | null
+  razon_social: string | null
+  nombre_comercial: string | null
+  tipo_documento: string | null
+  numero_documento: string | null
   tipo_contacto: string
   estado_comercial: string
+  asesor_asignado: string | null
+  ultimo_contacto_por: string | null
+  creado_por: string | null
+  asesor_asignado_id: string | null
+  asesor_asignado_nombre: string | null
   whatsapp: string | null
   whatsapp_usuario: string | null
   email: string | null
@@ -138,6 +158,9 @@ export default function BoardCRMPage() {
   const [error, setError] = useState("")
   const [busqueda, setBusqueda] = useState("")
   const [mensaje, setMensaje] = useState("")
+  const [perfil, setPerfil] = useState<Perfil | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+
   const [actualizandoId, setActualizandoId] = useState<string | null>(null)
   const [enviandoPlantillaId, setEnviandoPlantillaId] = useState<string | null>(
     null
@@ -154,11 +177,45 @@ export default function BoardCRMPage() {
     setLoading(true)
     setError("")
 
-    const { data, error } = await supabase
+    const { data: sessionData } = await supabase.auth.getSession()
+    const session = sessionData.session
+
+    if (!session?.user?.email) {
+      setError("No se encontró una sesión activa.")
+      setLoading(false)
+      return
+    }
+
+    setUserId(session.user.id)
+
+    const { data: perfilData, error: perfilError } = await supabase
+      .from("perfiles")
+      .select("nombre, email, rol, activo")
+      .eq("email", session.user.email)
+      .single()
+
+    if (perfilError || !perfilData) {
+      setError("No se pudo cargar el perfil del usuario.")
+      setLoading(false)
+      return
+    }
+
+    const perfilUsuario = perfilData as Perfil
+    setPerfil(perfilUsuario)
+
+    let query = supabase
       .from("crm_contactos")
       .select("*")
       .eq("activo", true)
       .order("created_at", { ascending: false })
+
+    if (perfilUsuario.rol === "vendedor") {
+      query = query.or(
+        `creado_por.eq.${session.user.id},asesor_asignado_id.eq.${session.user.id}`
+      )
+    }
+
+    const { data, error } = await query
 
     if (error) {
       setError(error.message)
@@ -169,6 +226,8 @@ export default function BoardCRMPage() {
     setContactos((data || []) as CrmContacto[])
     setLoading(false)
   }
+
+  const esVendedor = perfil?.rol === "vendedor"
 
   const limpiarWhatsapp = (numero: string | null) => {
     if (!numero) return ""
@@ -185,6 +244,46 @@ export default function BoardCRMPage() {
     return limpio.startsWith("@") ? limpio : `@${limpio}`
   }
 
+  const obtenerNombreCompleto = (contacto: CrmContacto) => {
+    return `${contacto.nombre} ${contacto.apellido || ""}`.trim()
+  }
+
+  const obtenerEmpresaVisible = (contacto: CrmContacto) => {
+    return (
+      contacto.empresa_salon ||
+      contacto.nombre_comercial ||
+      contacto.razon_social ||
+      "Sin empresa registrada"
+    )
+  }
+
+  const obtenerDocumentoVisible = (contacto: CrmContacto) => {
+    if (contacto.tipo_documento && contacto.numero_documento) {
+      return `${contacto.tipo_documento}: ${contacto.numero_documento}`
+    }
+
+    if (contacto.numero_documento) {
+      return contacto.numero_documento
+    }
+
+    return "Sin documento"
+  }
+
+  const obtenerAsesorVisible = (contacto: CrmContacto) => {
+    return (
+      contacto.asesor_asignado_nombre ||
+      contacto.asesor_asignado ||
+      "Sin asignar"
+    )
+  }
+
+  const puedeGestionarContacto = (contacto: CrmContacto) => {
+    if (!esVendedor) return true
+    if (!userId) return false
+
+    return contacto.creado_por === userId || contacto.asesor_asignado_id === userId
+  }
+
   const fechaHoy = () => {
     const hoy = new Date()
     const year = hoy.getFullYear()
@@ -196,7 +295,6 @@ export default function BoardCRMPage() {
 
   const fechaNormalizada = (fecha: string | null) => {
     if (!fecha) return ""
-
     return fecha.slice(0, 10)
   }
 
@@ -205,7 +303,6 @@ export default function BoardCRMPage() {
 
     const fechaBase = new Date(fecha)
     const hoy = new Date()
-
     const diferencia = hoy.getTime() - fechaBase.getTime()
 
     return Math.floor(diferencia / (1000 * 60 * 60 * 24))
@@ -254,6 +351,11 @@ export default function BoardCRMPage() {
   ) => {
     if (!nuevoEstado || nuevoEstado === contacto.estado_comercial) return
 
+    if (!puedeGestionarContacto(contacto)) {
+      setError("No tienes permiso para modificar este contacto.")
+      return
+    }
+
     setActualizandoId(contacto.id)
     setError("")
     setMensaje("")
@@ -265,6 +367,7 @@ export default function BoardCRMPage() {
       .update({
         estado_comercial: nuevoEstado,
         ultima_interaccion: fechaActual,
+        ultimo_contacto_por: perfil?.nombre || null,
       })
       .eq("id", contacto.id)
 
@@ -279,6 +382,8 @@ export default function BoardCRMPage() {
       tipo: "Cambio de etapa",
       titulo: `Etapa actualizada a ${nuevoEstado}`,
       descripcion: `El contacto pasó de "${contacto.estado_comercial}" a "${nuevoEstado}" desde el Board Comercial.`,
+      creado_por: userId,
+      asesor_nombre: perfil?.nombre || null,
     })
 
     setContactos((prev) =>
@@ -288,6 +393,7 @@ export default function BoardCRMPage() {
               ...item,
               estado_comercial: nuevoEstado,
               ultima_interaccion: fechaActual,
+              ultimo_contacto_por: perfil?.nombre || null,
             }
           : item
       )
@@ -299,6 +405,11 @@ export default function BoardCRMPage() {
   }
 
   const usarPlantillaWhatsApp = async (contacto: CrmContacto) => {
+    if (!puedeGestionarContacto(contacto)) {
+      setError("No tienes permiso para contactar este cliente.")
+      return
+    }
+
     const plantilla = obtenerPlantillaContacto(contacto.id)
     const whatsapp = limpiarWhatsapp(contacto.whatsapp)
     const usuarioWhatsapp = limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
@@ -313,12 +424,15 @@ export default function BoardCRMPage() {
       tipo: "WhatsApp",
       titulo: `Plantilla usada desde Board: ${plantilla.titulo}`,
       descripcion: plantilla.mensaje,
+      creado_por: userId,
+      asesor_nombre: perfil?.nombre || null,
     })
 
     await supabase
       .from("crm_contactos")
       .update({
         ultima_interaccion: fechaActual,
+        ultimo_contacto_por: perfil?.nombre || null,
       })
       .eq("id", contacto.id)
 
@@ -328,6 +442,7 @@ export default function BoardCRMPage() {
           ? {
               ...item,
               ultima_interaccion: fechaActual,
+              ultimo_contacto_por: perfil?.nombre || null,
             }
           : item
       )
@@ -370,23 +485,34 @@ export default function BoardCRMPage() {
 
     return contactos.filter((contacto) => {
       const usuarioWhatsapp = limpiarUsuarioWhatsapp(contacto.whatsapp_usuario)
+      const asesorVisible = obtenerAsesorVisible(contacto)
+      const empresaVisible = obtenerEmpresaVisible(contacto)
+      const documentoVisible = obtenerDocumentoVisible(contacto)
 
       return (
+        contacto.codigo_contacto?.toLowerCase().includes(texto) ||
         contacto.nombre?.toLowerCase().includes(texto) ||
         contacto.apellido?.toLowerCase().includes(texto) ||
         contacto.empresa_salon?.toLowerCase().includes(texto) ||
+        contacto.nombre_comercial?.toLowerCase().includes(texto) ||
+        contacto.razon_social?.toLowerCase().includes(texto) ||
+        contacto.tipo_documento?.toLowerCase().includes(texto) ||
+        contacto.numero_documento?.toLowerCase().includes(texto) ||
+        documentoVisible.toLowerCase().includes(texto) ||
+        empresaVisible.toLowerCase().includes(texto) ||
         contacto.tipo_contacto?.toLowerCase().includes(texto) ||
         contacto.estado_comercial?.toLowerCase().includes(texto) ||
         contacto.whatsapp?.toLowerCase().includes(texto) ||
         usuarioWhatsapp.toLowerCase().includes(texto) ||
         contacto.email?.toLowerCase().includes(texto) ||
         contacto.ciudad?.toLowerCase().includes(texto) ||
-        contacto.fuente_contacto?.toLowerCase().includes(texto)
+        contacto.fuente_contacto?.toLowerCase().includes(texto) ||
+        asesorVisible.toLowerCase().includes(texto)
       )
     })
   }, [contactos, busqueda])
 
-  const columnas = useMemo<ColumnaBoard[]>((() => {
+  const columnas = useMemo<ColumnaBoard[]>(() => {
     const hoy = fechaHoy()
 
     const seguimientoHoy = contactosFiltrados.filter(
@@ -488,7 +614,7 @@ export default function BoardCRMPage() {
         contactos: clientesRecompra,
       },
     ]
-  }) as () => ColumnaBoard[], [contactosFiltrados])
+  }, [contactosFiltrados])
 
   const totalVisibles = contactosFiltrados.length
 
@@ -502,6 +628,10 @@ export default function BoardCRMPage() {
 
   const contactosConWhatsApp = contactosFiltrados.filter(
     (contacto) => contacto.whatsapp || contacto.whatsapp_usuario
+  ).length
+
+  const contactosConDocumento = contactosFiltrados.filter(
+    (contacto) => contacto.numero_documento
   ).length
 
   return (
@@ -524,13 +654,15 @@ export default function BoardCRMPage() {
             </p>
 
             <h1 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
-              Board Comercial Inteligente
+              {esVendedor
+                ? "Mi Board Comercial"
+                : "Board Comercial Inteligente"}
             </h1>
 
             <p className="mt-2 max-w-3xl text-sm text-[#4A4A4A]">
-              Vista de trabajo para priorizar seguimientos, leads calientes,
-              kits enviados, cotizaciones y clientes activos. La base completa
-              sigue estando en Contactos.
+              {esVendedor
+                ? "Vista de trabajo para priorizar tus seguimientos, leads, kits, cotizaciones y clientes asignados."
+                : "Vista de trabajo para priorizar seguimientos, leads calientes, kits enviados, cotizaciones y clientes activos. La base completa sigue estando en Contactos."}
             </p>
           </div>
 
@@ -540,7 +672,7 @@ export default function BoardCRMPage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2DA] bg-white px-5 py-3 text-sm font-semibold text-[#737563] transition hover:border-[#737563] hover:text-[#1F1F1F]"
             >
               <UserRound size={18} />
-              Base completa
+              {esVendedor ? "Mis contactos" : "Base completa"}
             </Link>
 
             <Link
@@ -564,9 +696,18 @@ export default function BoardCRMPage() {
           </div>
         )}
 
-        <section className="mb-6 grid gap-4 md:grid-cols-4">
+        {esVendedor && (
+          <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-700">
+            Estás viendo únicamente contactos creados por ti o asignados a tu
+            usuario.
+          </div>
+        )}
+
+        <section className="mb-6 grid gap-4 md:grid-cols-5">
           <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
-            <p className="text-sm text-[#737563]">Contactos filtrados</p>
+            <p className="text-sm text-[#737563]">
+              {esVendedor ? "Mis contactos filtrados" : "Contactos filtrados"}
+            </p>
             <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
               {loading ? "..." : totalVisibles}
             </h2>
@@ -577,6 +718,16 @@ export default function BoardCRMPage() {
             <h2 className="mt-2 text-3xl font-semibold text-[#1F1F1F]">
               {loading ? "..." : totalAccionables}
             </h2>
+          </div>
+
+          <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
+            <p className="text-sm text-[#737563]">Con documento</p>
+            <div className="mt-2 flex items-center gap-2">
+              <FileText size={26} className="text-[#737563]" />
+              <h2 className="text-3xl font-semibold text-[#1F1F1F]">
+                {loading ? "..." : contactosConDocumento}
+              </h2>
+            </div>
           </div>
 
           <div className="rounded-2xl border border-[#E5E2DA] bg-white p-5 shadow-sm">
@@ -616,7 +767,7 @@ export default function BoardCRMPage() {
                 <input
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Nombre, salón, estado, número, @usuario, ciudad..."
+                  placeholder="Código, RUC/DNI, razón social, nombre comercial, nombre, salón, estado, número, @usuario, ciudad, asesor..."
                   className="w-full rounded-xl border border-[#E5E2DA] bg-[#F7F6F2] py-3 pl-11 pr-4 text-sm text-[#1F1F1F] outline-none transition placeholder:text-[#737563] focus:border-[#737563] focus:bg-white"
                 />
               </div>
@@ -647,7 +798,7 @@ export default function BoardCRMPage() {
               return (
                 <div
                   key={columna.id}
-                  className="flex w-[360px] shrink-0 flex-col rounded-3xl border border-[#E5E2DA] bg-white shadow-sm"
+                  className="flex w-[370px] shrink-0 flex-col rounded-3xl border border-[#E5E2DA] bg-white shadow-sm"
                 >
                   <div className="sticky top-0 z-10 rounded-t-3xl border-b border-[#E5E2DA] bg-white p-4">
                     <div className="mb-3 flex items-start justify-between gap-3">
@@ -689,9 +840,7 @@ export default function BoardCRMPage() {
                       </div>
                     ) : (
                       contactosLimitados.map((contacto) => {
-                        const nombreCompleto = `${contacto.nombre} ${
-                          contacto.apellido || ""
-                        }`.trim()
+                        const nombreCompleto = obtenerNombreCompleto(contacto)
 
                         const whatsappLimpio = limpiarWhatsapp(
                           contacto.whatsapp
@@ -714,6 +863,10 @@ export default function BoardCRMPage() {
                         const plantillaSeleccionada =
                           obtenerPlantillaContacto(contacto.id)
 
+                        const asesorVisible = obtenerAsesorVisible(contacto)
+                        const empresaVisible = obtenerEmpresaVisible(contacto)
+                        const documentoVisible = obtenerDocumentoVisible(contacto)
+
                         return (
                           <div
                             key={`${columna.id}-${contacto.id}`}
@@ -725,13 +878,34 @@ export default function BoardCRMPage() {
                               </div>
 
                               <div className="min-w-0">
+                                <div className="mb-2 flex flex-wrap gap-2">
+                                  <span className="rounded-full bg-[#1F1F1F] px-3 py-1 text-[11px] font-semibold text-white">
+                                    {contacto.codigo_contacto || "Sin código"}
+                                  </span>
+
+                                  {contacto.numero_documento && (
+                                    <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#737563]">
+                                      {documentoVisible}
+                                    </span>
+                                  )}
+                                </div>
+
                                 <h3 className="truncate font-semibold text-[#1F1F1F]">
                                   {nombreCompleto}
                                 </h3>
 
                                 <p className="mt-1 line-clamp-2 text-xs text-[#737563]">
-                                  {contacto.empresa_salon ||
-                                    "Sin empresa registrada"}
+                                  {empresaVisible}
+                                </p>
+
+                                {contacto.razon_social && (
+                                  <p className="mt-1 line-clamp-2 text-xs text-[#737563]">
+                                    Razón social: {contacto.razon_social}
+                                  </p>
+                                )}
+
+                                <p className="mt-2 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                  {asesorVisible}
                                 </p>
                               </div>
                             </div>

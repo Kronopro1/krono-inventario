@@ -26,7 +26,7 @@ type MenuLink = {
 
 function rutaInicioPorRol(rol: Rol) {
   if (rol === "operador") return "/inventario"
-  if (rol === "vendedor") return "/ventas"
+  if (rol === "vendedor") return "/crm"
   if (rol === "consulta") return "/inventario"
   return "/"
 }
@@ -55,11 +55,7 @@ function rutaPermitida(pathname: string, rol: Rol) {
   }
 
   if (rol === "vendedor") {
-    return (
-      pathname === "/" ||
-      pathname.startsWith("/inventario") ||
-      pathname.startsWith("/ventas")
-    )
+  return pathname.startsWith("/crm")
   }
 
   return false
@@ -210,25 +206,26 @@ export default function AppShell({ children }: AppShellProps) {
 
   const rol = perfil?.rol
 
-  const puedeVerGeneral =
-    rol === "admin" || rol === "consulta" || rol === "vendedor"
+  const puedeVerGeneral = rol === "admin" || rol === "consulta"
 
   const puedeVerInventario =
-    rol === "admin" ||
-    rol === "operador" ||
-    rol === "consulta" ||
-    rol === "vendedor"
+  rol === "admin" || rol === "operador" || rol === "consulta"
 
   const puedeOperarInventario = rol === "admin" || rol === "operador"
 
-  const puedeVender =
-    rol === "admin" || rol === "operador" || rol === "vendedor"
+  const puedeVender = rol === "admin" || rol === "operador"
 
   const puedeVerMovimientos = rol === "admin" || rol === "operador"
 
   const puedeVerConfiguracion = rol === "admin"
 
   const puedeVerReportes = rol === "admin" || rol === "consulta"
+
+  const puedeVerCRM =
+  rol === "admin" ||
+  rol === "operador" ||
+  rol === "consulta" ||
+  rol === "vendedor"
 
   const cerrarMenuMovil = () => setMenuAbierto(false)
 
@@ -308,6 +305,8 @@ export default function AppShell({ children }: AppShellProps) {
   puedeVender={puedeVender}
   puedeVerMovimientos={puedeVerMovimientos}
   puedeVerConfiguracion={puedeVerConfiguracion}
+  puedeVerReportes={puedeVerReportes}
+  puedeVerCRM={puedeVerCRM}
   onClose={cerrarMenuMovil}
   onLogout={cerrarSesion}
 />
